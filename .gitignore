@@ -1,0 +1,38 @@
+# Build artifacts (regenerable via `acton build`)
+build/cache/
+build/mutation-sessions/
+build/abi/
+build/*.json
+!build/gas-baseline.json
+
+# Generated bundle artifacts (regenerable via `acton build`)
+gen/
+
+# Bundled stdlib (regenerable via `acton init --stdlib-only`)
+.acton/
+
+# Coverage output (regenerable via `acton test --coverage`)
+coverage.txt
+
+# Intentionally tracked (do NOT ignore):
+#   build/gas-baseline.json : gas regression baseline
+#   wrappers/*.gen.tolk     : Tolk wrappers (tests depend on them)
+#   wrappers-ts/*.gen.ts    : TS wrappers (off-chain consumers depend on them)
+
+# Local secrets (never commit)
+.env
+.env.local
+.env.bak*
+.env.*.bak
+*.mnemonic
+*.seed
+wallets/
+global.wallets.toml
+local.wallets.toml
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+.obsidian/

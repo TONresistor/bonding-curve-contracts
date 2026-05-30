@@ -1,0 +1,103 @@
+[package]
+name = "bonding-curve-contracts"
+description = "Decentralized bonding-curve launchpad on TON"
+version = "1.0.0"
+license = "MIT"
+
+[toolchain]
+acton = "1.0.0"
+
+[contracts.JettonMinter]
+display-name = "JettonMinter"
+src = "contracts/JettonMinter.tolk"
+depends = ["JettonWallet"]
+
+[contracts.JettonWallet]
+display-name = "JettonWallet"
+src = "contracts/JettonWallet.tolk"
+depends = []
+
+[contracts.BondingCurveMaster]
+display-name = "BondingCurveMaster"
+src = "contracts/BondingCurveMaster.tolk"
+depends = ["BondingCurve", "JettonMinter", "JettonWallet"]
+
+[contracts.BondingCurve]
+display-name = "BondingCurve"
+src = "contracts/BondingCurve.tolk"
+depends = ["JettonWallet"]
+
+[test]
+
+[fmt]
+width = 100
+ignore = []
+
+[scripts]
+deploy-emulation = "acton script scripts/deploy.tolk"
+deploy-testnet = "acton script scripts/deploy.tolk --net testnet"
+jetton-change-admin = "acton script scripts/change-admin.tolk"
+jetton-change-metadata = "acton script scripts/change-metadata.tolk"
+jetton-claim-admin = "acton script scripts/claim-admin.tolk"
+jetton-info = "acton script scripts/info.tolk"
+jetton-mint = "acton script scripts/mint.tolk"
+jetton-transfer = "acton script scripts/transfer.tolk"
+
+# bonding-curve-contracts launchpad scripts — MAINNET ONLY (no testnet variant: DeDust v2 is mainnet-only,
+# and the project policy is to validate via mainnet fork rather than a separate testnet.)
+master-deploy-emulation = "acton script scripts/deploy-master.tolk"
+master-deploy-mainnet = "acton script scripts/deploy-master.tolk --net mainnet"
+master-fork-mainnet = "acton script scripts/deploy-master.tolk --fork-net mainnet"
+launch-create-emulation = "acton script scripts/create-launch.tolk"
+launch-create-mainnet = "acton script scripts/create-launch.tolk --net mainnet"
+launch-create-fork-mainnet = "acton script scripts/create-launch.tolk --fork-net mainnet"
+launch-info = "acton script scripts/launch-info.tolk"
+launch-info-mainnet = "acton script scripts/launch-info.tolk --fork-net mainnet"
+
+# Operations runbook (per mainnet.md §4.3, §5.1, §5.2, §5.3).
+# Each script has emulation + fork-mainnet + mainnet variants. Always validate via
+# fork-mainnet before broadcasting (it reads real DeDust + chain config without spending TON).
+curve-buy-emulation = "acton script scripts/buy-jettons.tolk"
+curve-buy-fork-mainnet = "acton script scripts/buy-jettons.tolk --fork-net mainnet"
+curve-buy-mainnet = "acton script scripts/buy-jettons.tolk --net mainnet"
+curve-sell-emulation = "acton script scripts/sell-jettons.tolk"
+curve-sell-fork-mainnet = "acton script scripts/sell-jettons.tolk --fork-net mainnet"
+curve-sell-mainnet = "acton script scripts/sell-jettons.tolk --net mainnet"
+curve-flush-fees-emulation = "acton script scripts/flush-fees.tolk"
+curve-flush-fees-fork-mainnet = "acton script scripts/flush-fees.tolk --fork-net mainnet"
+curve-flush-fees-mainnet = "acton script scripts/flush-fees.tolk --net mainnet"
+master-withdraw-fees-emulation = "acton script scripts/withdraw-fees.tolk"
+master-withdraw-fees-fork-mainnet = "acton script scripts/withdraw-fees.tolk --fork-net mainnet"
+master-withdraw-fees-mainnet = "acton script scripts/withdraw-fees.tolk --net mainnet"
+curve-graduate-emulation = "acton script scripts/graduate.tolk"
+curve-graduate-fork-mainnet = "acton script scripts/graduate.tolk --fork-net mainnet"
+curve-graduate-mainnet = "acton script scripts/graduate.tolk --net mainnet"
+master-trigger-reinit-emulation = "acton script scripts/reinit-curve.tolk"
+master-trigger-reinit-fork-mainnet = "acton script scripts/reinit-curve.tolk --fork-net mainnet"
+master-trigger-reinit-mainnet = "acton script scripts/reinit-curve.tolk --net mainnet"
+claim-creator-fees-emulation = "acton script scripts/claim-creator-fees.tolk"
+claim-creator-fees-fork-mainnet = "acton script scripts/claim-creator-fees.tolk --fork-net mainnet"
+claim-creator-fees-mainnet = "acton script scripts/claim-creator-fees.tolk --net mainnet"
+
+# Read-only mainnet pre-flight gate. Run before each --net mainnet broadcast.
+preflight-mainnet = "acton script scripts/preflight-mainnet.tolk --fork-net mainnet"
+
+# Sandbox demos (zero TON, ~30s each).
+demo-full-flow = "acton script scripts/demo-full-flow.tolk"
+demo-graduation-reachable = "acton script scripts/demo-graduation-reachable.tolk"
+
+[import-mappings]
+acton = ".acton"
+contracts = "contracts"
+gen = "gen"
+tests = "tests"
+wrappers = "wrappers"
+
+# Check full Acton.toml reference and all available keys:
+# https://ton-blockchain.github.io/acton/docs/acton-toml
+
+# S007 (import path can use mappings) is intentionally NOT suppressed:
+# Acton's [lint] config schema doesn't expose per-rule disable in our version.
+# The 4 warnings on `import "../gen/X"` lines are intentional (relative path
+# required so TON Verifier backend resolves the import — see comment above
+# each import). Acceptable cost.
