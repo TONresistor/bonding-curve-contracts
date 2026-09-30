@@ -4,9 +4,9 @@ import "bonding-messages"
 import "fee-addresses"
 import "fee-storage"
 
-import "../fees-management"
-import "../jetton-utils"
-import "../messages"
+import "../v1/fees-management"
+import "../v1/jetton-utils"
+import "../v1/messages"
 
 contract FeeCollectorV2 {
     version: "2.0.0"

@@ -12,7 +12,7 @@ import "@wrappers/JettonWallet.gen"
 import "@contracts/v2/bonding-dedust"
 import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
-import "../simulation/dedust"
+import "../shared/dedust"
 
 // Schema: https://hub-beta.dedust.io/docs/cpmm-v2/reference/pool
 struct (0x25251ee0) FinalizationJoin {

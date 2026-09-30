@@ -6,10 +6,10 @@
 import "@acton/build"
 import "@acton/emulation/network"
 import "@acton/testing/assert"
-import "@contracts/messages"
-import "@contracts/storage"
+import "@contracts/v1/messages"
+import "@contracts/v1/storage"
 
-/// Storage `MinterStorage` is defined in `@contracts/storage`
+/// Storage `MinterStorage` is defined in `@contracts/v1/storage`
 struct JettonMinterV2 {
     address: address
     stateInit: ContractState? = null

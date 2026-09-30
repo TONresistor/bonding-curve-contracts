@@ -5,13 +5,13 @@ import "@acton/tlb/either"
 import "@acton/tlb/maybe"
 import "@acton/types/transaction"
 
-import "@contracts/fees-management"
-import "@contracts/messages"
-import "@contracts/storage"
 import "@wrappers/JettonMinter.gen"
 import "@wrappers/JettonWallet.gen"
 import "@wrappers/utils"
 
+import "@contracts/v1/fees-management"
+import "@contracts/v1/messages"
+import "@contracts/v1/storage"
 import "test-utils"
 
 const MAX_JETTON_VALUE = 0xffffffffffffffffffffffffffffff

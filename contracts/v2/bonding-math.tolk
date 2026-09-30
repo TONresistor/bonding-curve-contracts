@@ -1,5 +1,5 @@
 import "bonding-storage"
-import "../bonding-config"
+import "../v1/bonding-config"
 
 fun computeBuyOut(
     tonIn: coins,

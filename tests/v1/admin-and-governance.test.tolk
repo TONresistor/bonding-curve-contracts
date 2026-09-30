@@ -3,14 +3,14 @@ import "@acton/emulation/testing"
 import "@acton/testing/expect"
 import "@acton/types/transaction"
 
-import "@contracts/errors"
-import "@contracts/messages"
-import "@contracts/sharding"
-import "@contracts/storage"
 import "@wrappers/JettonMinter.gen"
 import "@wrappers/JettonWallet.gen"
 import "@wrappers/utils"
 
+import "@contracts/v1/errors"
+import "@contracts/v1/messages"
+import "@contracts/v1/sharding"
+import "@contracts/v1/storage"
 import "test-utils"
 
 get fun `test admin: deploy should create minter without bounce`() {

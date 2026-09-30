@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LIBRARIES = {
     "pool": "6045e67b617e73486aac445cfcad0dbead6d315ccc8f4aede3f2e23ad14da4b0",
     "deposit": "2cac3fddd30969d08df036067108c6e7d69780a9459d931d2eb63d95d5ff6825",
@@ -19,12 +19,11 @@ LIBRARIES = {
 
 
 def fingerprint():
-    files = [ROOT / "Acton.toml", Path(__file__), ROOT / "scripts/simulate-market.tolk"]
+    files = [ROOT / "Acton.toml", Path(__file__), ROOT / "scripts/v1/simulate-market.tolk"]
     files += sorted((ROOT / "contracts").rglob("*.tolk"))
-    files += sorted((ROOT / "tests/simulation").glob("*.tolk"))
-    files += sorted((ROOT / "tests/v2").glob("*.tolk"))
-    files += [ROOT / "scripts/simulate-migration-v2.tolk"]
-    files += [ROOT / "tests/test-utils.tolk", ROOT / "wrappers/utils.tolk"]
+    files += sorted((ROOT / "tests").rglob("*.tolk"))
+    files += [ROOT / "scripts/v2/simulate-migration.tolk"]
+    files += [ROOT / "wrappers/utils.tolk"]
     files += sorted((ROOT / "wrappers").glob("*.gen.tolk"))
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
 
@@ -90,9 +89,9 @@ def main():
         if args.fork_block:
             command += ["--fork-net", "mainnet", "--fork-block-number", str(args.fork_block)]
         if args.profile == "v2":
-            command += ["scripts/simulate-migration-v2.tolk", str(operations)]
+            command += ["scripts/v2/simulate-migration.tolk", str(operations)]
         else:
-            command += ["scripts/simulate-market.tolk", str(seed), str(operations), str(actors)]
+            command += ["scripts/v1/simulate-market.tolk", str(seed), str(operations), str(actors)]
         log = output / f"seed-{seed}.log"
         snapshot = ROOT / "build/market-simulation" / f"failure-{seed}.json"
         snapshot.unlink(missing_ok=True)
@@ -125,7 +124,7 @@ def main():
                   f"claims={metrics.get('claims', '?')}", flush=True)
         if not passed:
             print("\n".join(contents.splitlines()[-35:]), file=sys.stderr)
-            print(f"Replay: python3 scripts/run-market-simulation.py replay --seed {seed} "
+            print(f"Replay: python3 scripts/shared/run-market-simulation.py replay --seed {seed} "
                   f"--operations {operations} --actors {actors}" +
                   (f" --fork-block {args.fork_block}" if args.fork_block else " --offline"), file=sys.stderr)
             return 1

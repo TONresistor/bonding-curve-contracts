@@ -6,11 +6,11 @@
 import "@acton/build"
 import "@acton/emulation/network"
 import "@acton/testing/assert"
-import "@contracts/messages"
-import "@contracts/storage"
+import "@contracts/v1/messages"
+import "@contracts/v1/storage"
 import "@contracts/v2/wallet-messages"
 
-/// Storage `WalletStorage` is defined in `@contracts/storage`
+/// Storage `WalletStorage` is defined in `@contracts/v1/storage`
 struct JettonWalletV2 {
     address: address
     stateInit: ContractState? = null

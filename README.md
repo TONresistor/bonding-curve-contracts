@@ -27,16 +27,16 @@ acton run market-campaign    # 20 seeds, 50 traders, 10,000 requests
 
 The first market run downloads the DeDust libraries and verifies their hashes. Reports and traces are saved in `build/market-simulation/`. CI runs the quick scenario and saves its reports.
 
-## Contracts
+## Contracts V1
 
 | Contract | Role |
 | --- | --- |
-| [BondingCurveMaster](contracts/BondingCurveMaster.tolk) | Creates launches and manages protocol fees and treasury. |
-| [BondingCurve](contracts/BondingCurve.tolk) | Handles buys, sells and migration to DeDust. |
-| [JettonMinter](contracts/JettonMinter.tolk) | Mints the initial supply, then drops its admin. |
-| [JettonWallet](contracts/JettonWallet.tolk) | Handles token transfers and burns. |
+| [BondingCurveMaster](contracts/v1/BondingCurveMaster.tolk) | Creates launches and manages protocol fees and treasury. |
+| [BondingCurve](contracts/v1/BondingCurve.tolk) | Handles buys, sells and migration to DeDust. |
+| [JettonMinter](contracts/v1/JettonMinter.tolk) | Mints the initial supply, then drops its admin. |
+| [JettonWallet](contracts/v1/JettonWallet.tolk) | Handles token transfers and burns. |
 
-The jetton wallet is an unmodified copy of [TON Core’s reference](https://github.com/ton-blockchain/acton-contracts/blob/d721c3179696b453a9490fcfd2f30770f8c234b4/jetton-v2.1/contracts/JettonWallet.tolk), using this project’s shared helpers. Its source pin and checksum are in [JettonWallet.upstream.json](contracts/JettonWallet.upstream.json).
+The jetton wallet is an unmodified copy of [TON Core’s reference](https://github.com/ton-blockchain/acton-contracts/blob/d721c3179696b453a9490fcfd2f30770f8c234b4/jetton-v2.1/contracts/JettonWallet.tolk), using this project’s shared helpers. Its source pin and checksum are in [JettonWallet.upstream.json](contracts/v1/JettonWallet.upstream.json).
 
 Migration deploys the pool, resolves its jetton wallet, then deposits TON and tokens. The initial LP position is fully locked.
 
@@ -51,7 +51,7 @@ Migration deploys the pool, resolves its jetton wallet, then deposits TON and to
 | Launch fee | 0.2 TON |
 | Migration fee | 20 TON |
 
-Tokenomics are defined in [bonding-config.tolk](contracts/bonding-config.tolk). Pool configuration and fee settings are in [bonding-dedust.tolk](contracts/bonding-dedust.tolk). The token amount deposited at migration is calculated from the curve's final reserves.
+Tokenomics are defined in [bonding-config.tolk](contracts/v1/bonding-config.tolk). Pool configuration and fee settings are in [bonding-dedust.tolk](contracts/v1/bonding-dedust.tolk). The token amount deposited at migration is calculated from the curve's final reserves.
 
 ## Test
 

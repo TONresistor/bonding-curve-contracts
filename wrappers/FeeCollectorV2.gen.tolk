@@ -6,7 +6,7 @@
 import "@acton/build"
 import "@acton/emulation/network"
 import "@acton/testing/assert"
-import "@contracts/messages"
+import "@contracts/v1/messages"
 import "@contracts/v2/fee-storage"
 
 /// Storage `CollectorStorage` is defined in `@contracts/v2/fee-storage`

@@ -1,4 +1,4 @@
-import "../messages"
+import "../v1/messages"
 
 // Mint receipts require a transfer from the minter. Tracked receipts go to the
 // authenticated initiator, not the excesses destination.

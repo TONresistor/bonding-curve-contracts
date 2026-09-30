@@ -3,11 +3,11 @@ import "@acton/emulation/testing"
 import "@acton/testing/expect"
 import "@acton/types/message"
 
-import "@contracts/messages"
 import "@wrappers/JettonMinter.gen"
 import "@wrappers/JettonWallet.gen"
 import "@wrappers/utils"
 
+import "@contracts/v1/messages"
 import "test-utils"
 
 get fun `test bounce: minter restores supply on internal_transfer bounce`() {

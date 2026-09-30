@@ -1,10 +1,10 @@
 import "@acton/io"
 import "@acton/emulation/network"
 import "@acton/emulation/scripts"
-import "@contracts/bonding-config"
 import "@wrappers/BondingCurve.gen"
 import "@wrappers/BondingCurveMaster.gen"
 import "@wrappers/utils"
+import "@contracts/v1/bonding-config"
 import "utils/common"
 
 fun main() {

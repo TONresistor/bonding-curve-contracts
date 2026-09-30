@@ -1,11 +1,11 @@
 import "@gen/JettonWalletV2.code"
 import "bonding-messages"
-import "../errors"
-import "../fees-management"
-import "../jetton-utils"
-import "../messages"
-import "../sharding"
-import "../storage"
+import "../v1/errors"
+import "../v1/fees-management"
+import "../v1/jetton-utils"
+import "../v1/messages"
+import "../v1/sharding"
+import "../v1/storage"
 
 contract JettonMinterV2 {
     author: "Digital Resistance"

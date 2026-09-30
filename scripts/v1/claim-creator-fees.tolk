@@ -1,7 +1,7 @@
 import "@acton/io"
 import "@acton/emulation/network"
 import "@acton/emulation/scripts"
-import "@contracts/bonding-messages"
+import "@contracts/v1/bonding-messages"
 import "utils/common"
 
 fun main() {

@@ -1,9 +1,9 @@
 import "@gen/JettonWalletV2.code"
 import "fee-storage"
 import "wallet-messages"
-import "../fees-management"
-import "../jetton-utils"
-import "../messages"
+import "../v1/fees-management"
+import "../v1/jetton-utils"
+import "../v1/messages"
 
 contract FeeSplitterV2 {
     version: "2.0.0"

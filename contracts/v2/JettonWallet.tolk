@@ -1,12 +1,12 @@
 import "@stdlib/gas-payments"
-// Derived from the pinned reference in ../JettonWallet.upstream.json.
+// Derived from the pinned reference in ../v1/JettonWallet.upstream.json.
 import "wallet-messages"
-import "../errors"
-import "../fees-management"
-import "../jetton-utils"
-import "../messages"
-import "../sharding"
-import "../storage"
+import "../v1/errors"
+import "../v1/fees-management"
+import "../v1/jetton-utils"
+import "../v1/messages"
+import "../v1/sharding"
+import "../v1/storage"
 
 contract JettonWalletV2 {
     author: "The Tolk Team; bonding-curve-contracts"

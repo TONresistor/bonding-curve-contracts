@@ -1,14 +1,14 @@
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
 import "@acton/testing/expect"
-import "@contracts/bonding-config"
-import "@contracts/bonding-dedust"
-import "@contracts/bonding-messages"
-import "@contracts/bonding-storage"
-import "@contracts/messages"
 import "@wrappers/BondingCurve.gen"
 import "@wrappers/BondingCurveMaster.gen"
 import "@wrappers/utils"
+import "@contracts/v1/bonding-config"
+import "@contracts/v1/bonding-dedust"
+import "@contracts/v1/bonding-messages"
+import "@contracts/v1/bonding-storage"
+import "@contracts/v1/messages"
 
 struct PhaseBFixture {
     curve: BondingCurve

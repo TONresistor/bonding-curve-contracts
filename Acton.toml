@@ -9,22 +9,22 @@ acton = "1.2.0"
 
 [contracts.JettonMinter]
 display-name = "JettonMinter"
-src = "contracts/JettonMinter.tolk"
+src = "contracts/v1/JettonMinter.tolk"
 depends = ["JettonWallet"]
 
 [contracts.JettonWallet]
 display-name = "JettonWallet"
-src = "contracts/JettonWallet.tolk"
+src = "contracts/v1/JettonWallet.tolk"
 depends = []
 
 [contracts.BondingCurveMaster]
 display-name = "BondingCurveMaster"
-src = "contracts/BondingCurveMaster.tolk"
+src = "contracts/v1/BondingCurveMaster.tolk"
 depends = ["BondingCurve", "JettonMinter", "JettonWallet"]
 
 [contracts.BondingCurve]
 display-name = "BondingCurve"
-src = "contracts/BondingCurve.tolk"
+src = "contracts/v1/BondingCurve.tolk"
 depends = ["JettonWallet"]
 
 [test]
@@ -32,67 +32,67 @@ depends = ["JettonWallet"]
 [fmt]
 width = 100
 # Keep the upstream wallet byte-for-byte identical to its pinned source.
-ignore = ["contracts/JettonWallet.tolk"]
+ignore = ["contracts/v1/JettonWallet.tolk"]
 
 [scripts]
-deploy-emulation = "acton script scripts/deploy.tolk"
-deploy-testnet = "acton script scripts/deploy.tolk --net testnet"
-jetton-change-admin = "acton script scripts/change-admin.tolk"
-jetton-change-metadata = "acton script scripts/change-metadata.tolk"
-jetton-claim-admin = "acton script scripts/claim-admin.tolk"
-jetton-info = "acton script scripts/info.tolk"
-jetton-mint = "acton script scripts/mint.tolk"
-jetton-transfer = "acton script scripts/transfer.tolk"
+deploy-emulation = "acton script scripts/v1/deploy.tolk"
+deploy-testnet = "acton script scripts/v1/deploy.tolk --net testnet"
+jetton-change-admin = "acton script scripts/v1/change-admin.tolk"
+jetton-change-metadata = "acton script scripts/v1/change-metadata.tolk"
+jetton-claim-admin = "acton script scripts/v1/claim-admin.tolk"
+jetton-info = "acton script scripts/v1/info.tolk"
+jetton-mint = "acton script scripts/v1/mint.tolk"
+jetton-transfer = "acton script scripts/v1/transfer.tolk"
 
 # bonding-curve-contracts launchpad scripts — MAINNET ONLY (no testnet variant: DeDust v2 is mainnet-only,
 # and the project policy is to validate via mainnet fork rather than a separate testnet.)
-master-deploy-emulation = "acton script scripts/deploy-master.tolk"
-master-deploy-mainnet = "acton script scripts/deploy-master.tolk --net mainnet"
-master-fork-mainnet = "acton script scripts/deploy-master.tolk --fork-net mainnet"
-launch-create-emulation = "acton script scripts/create-launch.tolk"
-launch-create-mainnet = "acton script scripts/create-launch.tolk --net mainnet"
-launch-create-fork-mainnet = "acton script scripts/create-launch.tolk --fork-net mainnet"
-launch-info = "acton script scripts/launch-info.tolk"
-launch-info-mainnet = "acton script scripts/launch-info.tolk --fork-net mainnet"
+master-deploy-emulation = "acton script scripts/v1/deploy-master.tolk"
+master-deploy-mainnet = "acton script scripts/v1/deploy-master.tolk --net mainnet"
+master-fork-mainnet = "acton script scripts/v1/deploy-master.tolk --fork-net mainnet"
+launch-create-emulation = "acton script scripts/v1/create-launch.tolk"
+launch-create-mainnet = "acton script scripts/v1/create-launch.tolk --net mainnet"
+launch-create-fork-mainnet = "acton script scripts/v1/create-launch.tolk --fork-net mainnet"
+launch-info = "acton script scripts/v1/launch-info.tolk"
+launch-info-mainnet = "acton script scripts/v1/launch-info.tolk --fork-net mainnet"
 
 # Operations runbook (per mainnet.md §4.3, §5.1, §5.2, §5.3).
 # Each script has emulation + fork-mainnet + mainnet variants. Always validate via
 # fork-mainnet before broadcasting (it reads real DeDust + chain config without spending TON).
-curve-buy-emulation = "acton script scripts/buy-jettons.tolk"
-curve-buy-fork-mainnet = "acton script scripts/buy-jettons.tolk --fork-net mainnet"
-curve-buy-mainnet = "acton script scripts/buy-jettons.tolk --net mainnet"
-curve-sell-emulation = "acton script scripts/sell-jettons.tolk"
-curve-sell-fork-mainnet = "acton script scripts/sell-jettons.tolk --fork-net mainnet"
-curve-sell-mainnet = "acton script scripts/sell-jettons.tolk --net mainnet"
-curve-flush-fees-emulation = "acton script scripts/flush-fees.tolk"
-curve-flush-fees-fork-mainnet = "acton script scripts/flush-fees.tolk --fork-net mainnet"
-curve-flush-fees-mainnet = "acton script scripts/flush-fees.tolk --net mainnet"
-master-withdraw-fees-emulation = "acton script scripts/withdraw-fees.tolk"
-master-withdraw-fees-fork-mainnet = "acton script scripts/withdraw-fees.tolk --fork-net mainnet"
-master-withdraw-fees-mainnet = "acton script scripts/withdraw-fees.tolk --net mainnet"
-curve-graduate-emulation = "acton script scripts/graduate.tolk"
-curve-graduate-fork-mainnet = "acton script scripts/graduate.tolk --fork-net mainnet"
-curve-graduate-mainnet = "acton script scripts/graduate.tolk --net mainnet"
-master-trigger-reinit-emulation = "acton script scripts/reinit-curve.tolk"
-master-trigger-reinit-fork-mainnet = "acton script scripts/reinit-curve.tolk --fork-net mainnet"
-master-trigger-reinit-mainnet = "acton script scripts/reinit-curve.tolk --net mainnet"
-claim-creator-fees-emulation = "acton script scripts/claim-creator-fees.tolk"
-claim-creator-fees-fork-mainnet = "acton script scripts/claim-creator-fees.tolk --fork-net mainnet"
-claim-creator-fees-mainnet = "acton script scripts/claim-creator-fees.tolk --net mainnet"
+curve-buy-emulation = "acton script scripts/v1/buy-jettons.tolk"
+curve-buy-fork-mainnet = "acton script scripts/v1/buy-jettons.tolk --fork-net mainnet"
+curve-buy-mainnet = "acton script scripts/v1/buy-jettons.tolk --net mainnet"
+curve-sell-emulation = "acton script scripts/v1/sell-jettons.tolk"
+curve-sell-fork-mainnet = "acton script scripts/v1/sell-jettons.tolk --fork-net mainnet"
+curve-sell-mainnet = "acton script scripts/v1/sell-jettons.tolk --net mainnet"
+curve-flush-fees-emulation = "acton script scripts/v1/flush-fees.tolk"
+curve-flush-fees-fork-mainnet = "acton script scripts/v1/flush-fees.tolk --fork-net mainnet"
+curve-flush-fees-mainnet = "acton script scripts/v1/flush-fees.tolk --net mainnet"
+master-withdraw-fees-emulation = "acton script scripts/v1/withdraw-fees.tolk"
+master-withdraw-fees-fork-mainnet = "acton script scripts/v1/withdraw-fees.tolk --fork-net mainnet"
+master-withdraw-fees-mainnet = "acton script scripts/v1/withdraw-fees.tolk --net mainnet"
+curve-graduate-emulation = "acton script scripts/v1/graduate.tolk"
+curve-graduate-fork-mainnet = "acton script scripts/v1/graduate.tolk --fork-net mainnet"
+curve-graduate-mainnet = "acton script scripts/v1/graduate.tolk --net mainnet"
+master-trigger-reinit-emulation = "acton script scripts/v1/reinit-curve.tolk"
+master-trigger-reinit-fork-mainnet = "acton script scripts/v1/reinit-curve.tolk --fork-net mainnet"
+master-trigger-reinit-mainnet = "acton script scripts/v1/reinit-curve.tolk --net mainnet"
+claim-creator-fees-emulation = "acton script scripts/v1/claim-creator-fees.tolk"
+claim-creator-fees-fork-mainnet = "acton script scripts/v1/claim-creator-fees.tolk --fork-net mainnet"
+claim-creator-fees-mainnet = "acton script scripts/v1/claim-creator-fees.tolk --net mainnet"
 
 # Read-only mainnet pre-flight gate. Run before each --net mainnet broadcast.
-preflight-mainnet = "acton script scripts/preflight-mainnet.tolk --fork-net mainnet"
+preflight-mainnet = "acton script scripts/v1/preflight-mainnet.tolk --fork-net mainnet"
 
 # Sandbox demos (zero TON, ~30s each).
-demo-full-flow = "acton script scripts/demo-full-flow.tolk"
-demo-graduation-reachable = "acton script scripts/demo-graduation-reachable.tolk"
+demo-full-flow = "acton script scripts/v1/demo-full-flow.tolk"
+demo-graduation-reachable = "acton script scripts/v1/demo-graduation-reachable.tolk"
 
 # Full migration with real DeDust libraries, emulated locally against mainnet reads.
-simulate-migration = "acton script scripts/simulate-migration.tolk --fork-net mainnet"
-market-quick = "python3 scripts/run-market-simulation.py quick"
-market-campaign = "python3 scripts/run-market-simulation.py campaign"
-market-replay = "python3 scripts/run-market-simulation.py replay"
-v2-simulation = "python3 scripts/run-market-simulation.py v2"
+simulate-migration = "acton script scripts/v1/simulate-migration.tolk --fork-net mainnet"
+market-quick = "python3 scripts/shared/run-market-simulation.py quick"
+market-campaign = "python3 scripts/shared/run-market-simulation.py campaign"
+market-replay = "python3 scripts/shared/run-market-simulation.py replay"
+v2-simulation = "python3 scripts/shared/run-market-simulation.py v2"
 
 [import-mappings]
 acton = ".acton"

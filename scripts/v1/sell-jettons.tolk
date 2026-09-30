@@ -2,11 +2,11 @@ import "@acton/fmt"
 import "@acton/io"
 import "@acton/emulation/network"
 import "@acton/emulation/scripts"
-import "@contracts/bonding-messages"
 import "@wrappers/BondingCurve.gen"
 import "@wrappers/JettonMinter.gen"
 import "@wrappers/JettonWallet.gen"
 import "@wrappers/utils"
+import "@contracts/v1/bonding-messages"
 import "utils/common"
 
 fun main() {
