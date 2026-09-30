@@ -1,4 +1,5 @@
 import "bonding-storage"
+import "fee-storage"
 import "../v1/bonding-config"
 
 fun computeBuyOut(
@@ -44,8 +45,8 @@ fun computeSellOut(
     return (tonOut, feeTon);
 }
 
-fun shouldGraduate(realTon: coins): bool {
-    return realTon >= GRADUATION_THRESHOLD_TON;
+fun shouldGraduate(realTon: coins, threshold: coins): bool {
+    return realTon >= threshold;
 }
 
 fun maxSafeSellJettons(virtualTon: coins, realTon: coins, jettonBalance: coins): coins {
@@ -69,4 +70,37 @@ fun validateLaunchOptions(o: LaunchOptions) {
         o.creatorFeeBps == 100 ||
         o.creatorFeeBps == 200
     ) throw 49;
+    assert (
+        o.graduationThreshold == ton("1000") || o.graduationThreshold == ton("2000") ||
+        o.graduationThreshold == ton("3000")
+    ) throw 49;
+    assert (o.reserveRatio == 3 || o.reserveRatio == 5 || o.reserveRatio == 8) throw 49;
+    assert (o.maxBuy == 0 || o.minBuy <= o.maxBuy) throw 49;
+    assert (o.maxBuy == 0 || o.maxBuy >= ton("0.01")) throw 49;
+    val headroom = initialVirtualReserve(o) * 9 - o.graduationThreshold;
+    assert (o.minBuy <= headroom) throw 49;
+    validateBeneficiaries(o.beneficiaries);
+}
+
+fun initialVirtualReserve(o: LaunchOptions): coins {
+    return o.graduationThreshold / o.reserveRatio;
+}
+
+fun previewLaunch(o: LaunchOptions): LaunchPreview {
+    validateLaunchOptions(o);
+    val virtual = initialVirtualReserve(o);
+    val x = virtual + o.graduationThreshold;
+    val remaining = virtual * o.supply / x;
+    val poolTon = o.graduationThreshold - MIGRATION_FEE;
+    val poolTokens = poolTon * remaining / x;
+    return {
+        virtualTonReserve: virtual,
+        graduationThreshold: o.graduationThreshold,
+        soldTokens: o.supply - remaining,
+        poolTon,
+        poolTokens,
+        remainingTokens: remaining - poolTokens,
+        initialPriceNanoPerBillion: virtual * 1000000000000000000 / o.supply,
+        graduationPriceNanoPerBillion: x * 1000000000000000000 / remaining,
+    };
 }

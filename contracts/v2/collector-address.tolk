@@ -6,10 +6,12 @@ fun collectorAddress(
     creator: address,
     protocol: address,
     creatorBps: uint16,
+    curve: address? = null,
+    beneficiaries: Cell<FeeBeneficiaries>? = null,
 ): AutoDeployAddress {
     val s = CollectorStorage {
         minter,
-        recipients: FeeRecipients { creator, protocol, creatorBps }.toCell(),
+        recipients: FeeRecipients { creator, protocol, creatorBps, curve, beneficiaries }.toCell(),
         initialized: false,
         nextId: 1,
     };

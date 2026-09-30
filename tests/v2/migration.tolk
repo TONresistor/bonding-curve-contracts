@@ -130,7 +130,15 @@ fun v2Payout(trace: SendResultList, sender: address, to: address, amount: coins)
     }
 }
 
-fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, rounds: int = 10) {
+fun v2MigrationScenario(
+    supply: coins,
+    fee: uint16,
+    dev: coins,
+    salt: uint64,
+    rounds: int = 10,
+    threshold: coins = ton("2000"),
+    ratio: uint8 = 5,
+) {
     val admin = testing.treasury("v2-protocol");
     val creator = testing.treasury("v2-creator");
     var actors: array<address> = [];
@@ -143,11 +151,22 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
     val master = BondingCurveMasterV2.fromStorage({ admin: admin.address, nextAdmin: null, treasury: admin.address, totalLaunches: 0, feesBalance: 0 });
     testing.setShardAccount(master.address, null);
     master.deploy(admin.address, { value: ton("2") });
+    var beneficiaries: Cell<FeeBeneficiaries>? = null;
+    if (ratio == 8) {
+        var shares: map<address, uint16> = [];
+        shares.set(creator.address, 6000);
+        shares.set(actors.get(8), 3000);
+        shares.set(actors.get(9), 1000);
+        beneficiaries = FeeBeneficiaries { shares }.toCell();
+    }
     val options = LaunchOptions {
         supply,
         creatorFeeBps: fee,
         devBuyAmount: dev,
         minDevTokens: 0,
+        graduationThreshold: threshold,
+        reserveRatio: ratio,
+        beneficiaries,
     };
     // Initialize fresh test accounts locally; forks retain the pinned chain config.
     val curveAddress = master.getLaunchAddress(creator.address, salt, options);
@@ -157,11 +176,15 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
         creator.address,
         admin.address,
         fee,
+        curveAddress,
+        beneficiaries,
     ).calculateAddress();
     val recipients = FeeRecipients {
         creator: creator.address,
         protocol: admin.address,
         creatorBps: fee,
+        curve: curveAddress,
+        beneficiaries,
     }.toCell();
     val splitterCandidate = splitterAddress(
         collectorCandidate,
@@ -224,15 +247,17 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
     expect(minter.getJettonData().totalSupply).toEqual(supply);
     expect(minter.getJettonData().adminAddress).toEqual(null);
     val devNet = dev - dev / 100 - dev * fee / 10000;
-    val devTokens = supply - ton("400") * supply / (ton("400") + devNet);
+    val virtual = threshold / ratio;
+    val devTokens = supply - virtual * supply / (virtual + devNet);
     expect(v2Tokens(minter, creator.address)).toEqual(devTokens);
     var expectedSeed: coins = 0;
     var expectedPoolTokens: coins = 0;
-    if (devNet < GRADUATION_THRESHOLD_TON) {
+    if (devNet < threshold) {
         expect(curve.getState()).toEqual(CURVE_STATE_TRADING);
+        val unit = min(ton("1"), (threshold - devNet) / (100 + rounds * 4));
         i = 0;
         repeat (10) {
-            curve.sendBuyJettons(actors.get(i), 10 + i, 0, { value: ton("5.05") });
+            curve.sendBuyJettons(actors.get(i), 10 + i, 0, { value: 5 * unit + ton("0.05") });
             i += 1;
         }
         var round = 0;
@@ -243,7 +268,8 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
             val before = curve.getCurveData();
             val beforeA = v2Tokens(minter, a);
             val beforeB = v2Tokens(minter, b);
-            val buyerNet = ton("2") - ton("2") / 100 - ton("2") * fee / 10000;
+            val buyAmount = 2 * unit;
+            val buyerNet = buyAmount - buyAmount / 100 - buyAmount * fee / 10000;
             val expectedBuy = before.curveJettonBalance -
                 (before.virtualTonReserve + before.realTonReserve) * before.curveJettonBalance /
                     (before.virtualTonReserve + before.realTonReserve + buyerNet);
@@ -251,7 +277,7 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
             val buy = v2Cursor(
                 a,
                 curve.address,
-                ton("2.05"),
+                buyAmount + ton("0.05"),
                 BuyJettons {
                     queryId: 100 + round,
                     minJettonsOut: 0,
@@ -291,7 +317,11 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
             round += 1;
         }
         val before = curve.getCurveData();
-        val gross = ton("2500");
+        val targetNet = threshold - before.realTonReserve + ton("0.01");
+        var gross = targetNet * 10000 / (9900 - fee);
+        while (gross - gross / 100 - gross * fee / 10000 < targetNet) {
+            gross += 1;
+        }
         val netIn = gross - gross / 100 - gross * fee / 10000;
         val out = before.curveJettonBalance -
             (before.virtualTonReserve + before.realTonReserve) * before.curveJettonBalance /
@@ -308,7 +338,7 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
         expect(migration).toHaveSuccessfulTx<Graduate>({ to: curve.address });
     } else {
         expectedSeed = devNet - MIGRATION_FEE;
-        expectedPoolTokens = expectedSeed * (supply - devTokens) / (ton("400") + devNet);
+        expectedPoolTokens = expectedSeed * (supply - devTokens) / (virtual + devNet);
     }
     expect(curve.getState()).toEqual(CURVE_STATE_MIGRATED);
     val pool = curve.getPoolAddress();
@@ -333,11 +363,19 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
     expect(total).toEqual(supply);
     val collector = FeeCollectorV2.fromAddress(curve.getCollectorAddress());
     val splitter = FeeSplitterV2.fromAddress(collector.getSplitterAddress());
+    curve.sendFlushCreatorFees(creator.address, 599, { value: ton("0.05") });
+    val shares = beneficiaryShares(recipients.load());
+    var beneficiary = shares.findFirst();
+    while (beneficiary.isFound) {
+        splitter.sendClaimSplitFees(beneficiary.getKey(), 599, false, { value: ton("0.2") });
+        expect(splitter.getFeeBalance(beneficiary.getKey(), false).tonAmount).toEqual(0);
+        beneficiary = shares.iterateNext(beneficiary);
+    }
     var earnedProtocolX: coins = 0;
     var earnedCreatorX: coins = 0;
     var earnedProtocolY: coins = 0;
     var earnedCreatorY: coins = 0;
-    val creatorInitialTokens = v2Tokens(minter, creator.address);
+
     var trade = 0;
     repeat (4) {
         val swap = V2Swap {
@@ -419,48 +457,62 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
         expect(
             splitter.sendClaimSplitFees(trader, 901, true, { value: ton("0.2") }),
         ).toHaveFailedTx<ClaimSplitFees>({ to: splitter.address, exitCode: 73 });
-        val ccCursor = v2Cursor(
-            creator.address,
-            splitter.address,
-            ton("0.2"),
-            ClaimSplitFees {
-                queryId: 901,
-                protocol: false,
-            },
-        );
-        ccCursor.executeN(1);
-        splitter.sendClaimSplitFees(creator.address, 901, false, { value: ton("0.2") });
-        val cc = ccCursor.executeAllRemaining();
-        ccCursor.close();
+        beneficiary = shares.findFirst();
+        var collectedNative: coins = 0;
+        var collectedTokens: coins = 0;
+        while (beneficiary.isFound) {
+            val recipient = beneficiary.getKey();
+            val balance = splitter.getFeeBalance(recipient, false);
+            val tokensBefore = v2Tokens(minter, recipient);
+            collectedNative += balance.tonAmount;
+            collectedTokens += balance.tokenAmount;
+            val ccCursor = v2Cursor(
+                recipient,
+                splitter.address,
+                ton("0.2"),
+                ClaimSplitFees {
+                    queryId: 901,
+                    protocol: false,
+                },
+            );
+            ccCursor.executeN(1);
+            splitter.sendClaimSplitFees(recipient, 901, false, { value: ton("0.2") });
+            val cc = ccCursor.executeAllRemaining();
+            ccCursor.close();
+            v2Payout(cc, splitter.address, recipient, balance.tonAmount);
+            expect(v2Tokens(minter, recipient)).toEqual(tokensBefore + balance.tokenAmount);
+            v2Drain(
+                [
+                    v2Cursor(
+                        recipient,
+                        splitter.address,
+                        ton("0.2"),
+                        ClaimSplitFees {
+                            queryId: 902,
+                            protocol: false,
+                        },
+                    ),
+                    v2Cursor(
+                        recipient,
+                        splitter.address,
+                        ton("0.2"),
+                        ClaimSplitFees {
+                            queryId: 902,
+                            protocol: false,
+                        },
+                    ),
+                ],
+            );
+            expect(v2Tokens(minter, recipient)).toEqual(tokensBefore + balance.tokenAmount);
+            expect(splitter.getFeeBalance(recipient, false).tokenAmount).toEqual(0);
+            beneficiary = shares.iterateNext(beneficiary);
+        }
         v2Payout(pc, splitter.address, admin.address, cpX);
-        v2Payout(cc, splitter.address, creator.address, beforeClaim.creatorFeeX - cpX);
+        expect(collectedNative).toEqual(beforeClaim.creatorFeeX - cpX);
+        expect(collectedTokens).toEqual(beforeClaim.creatorFeeY - cpY);
         expect(v2Tokens(minter, admin.address)).toEqual(earnedProtocolY);
-        expect(v2Tokens(minter, creator.address)).toEqual(creatorInitialTokens + earnedCreatorY);
         expect(v2Tokens(minter, splitter.address)).toEqual(0);
         expect(splitter.getSplitterData().pending.isEmpty()).toEqual(true);
-        v2Drain(
-            [
-                v2Cursor(
-                    creator.address,
-                    splitter.address,
-                    ton("0.2"),
-                    ClaimSplitFees {
-                        queryId: 902,
-                        protocol: false,
-                    },
-                ),
-                v2Cursor(
-                    creator.address,
-                    splitter.address,
-                    ton("0.2"),
-                    ClaimSplitFees {
-                        queryId: 902,
-                        protocol: false,
-                    },
-                ),
-            ],
-        );
-        expect(v2Tokens(minter, creator.address)).toEqual(creatorInitialTokens + earnedCreatorY);
         val afterClaim = net.runGetMethod<SimulationPoolData>(pool, "get_pool_data");
         expect(afterClaim.reserveX).toEqual(beforeClaim.reserveX);
         expect(afterClaim.reserveY).toEqual(beforeClaim.reserveY);
@@ -477,12 +529,21 @@ fun v2MigrationScenario(supply: coins, fee: uint16, dev: coins, salt: uint64, ro
         expect(earnedCreatorY).toEqual(0);
     }
     println(
-        "V2_PASS supply={} creator_bps={} dev_nano={} base_fee_bps={} curve_rounds={} swaps=8 claims=20",
-        supply,
-        fee,
-        dev,
-        initial.baseFeeBPS,
-        devNet < GRADUATION_THRESHOLD_TON ? rounds : 0,
+        "V2_PASS {} {}",
+        format(
+            "supply={} creator_bps={} dev_nano={} threshold_nano={} reserve_ratio={}",
+            supply,
+            fee,
+            dev,
+            threshold,
+            ratio,
+        ),
+        format(
+            "base_fee_bps={} curve_rounds={} swaps=8 claims={}",
+            initial.baseFeeBPS,
+            devNet < threshold ? rounds : 0,
+            ratio == 8 ? 52 : 20,
+        ),
     );
 }
 
@@ -500,8 +561,26 @@ fun runV2Matrix(rounds: int = 10) {
         repeat (5) {
             var d = 0;
             repeat (4) {
-                v2MigrationScenario(supplies.get(a), fees.get(b), buys.get(d), id, rounds);
-                id += 1;
+                val thresholds: array<coins> = [ton("1000"), ton("2000"), ton("3000")];
+                val ratios: array<uint8> = [3, 5, 8];
+                var t = 0;
+                repeat (3) {
+                    var r = 0;
+                    repeat (3) {
+                        v2MigrationScenario(
+                            supplies.get(a),
+                            fees.get(b),
+                            buys.get(d),
+                            id,
+                            rounds,
+                            thresholds.get(t),
+                            ratios.get(r),
+                        );
+                        id += 1;
+                        r += 1;
+                    }
+                    t += 1;
+                }
                 d += 1;
             }
             b += 1;
@@ -510,5 +589,5 @@ fun runV2Matrix(rounds: int = 10) {
     }
     simulateFinalization(0);
     simulateFinalization(1);
-    println("V2_MATRIX_PASS scenarios=60 presets=15 wallets=10");
+    println("V2_MATRIX_PASS scenarios=540 presets=135 wallets=10");
 }

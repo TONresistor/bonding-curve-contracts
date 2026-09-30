@@ -69,6 +69,22 @@ fun FeeSplitterV2.sendCreditNativeFees(
     return net.send(from, genericMsg);
 }
 
+fun FeeSplitterV2.sendCreditCurveFees(
+    self,
+    from: address,
+    queryId: uint64,
+    amount: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: CreditCurveFees { queryId, amount },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun FeeSplitterV2.sendTransferNotificationForRecipient(
     self,
     from: address,
@@ -185,4 +201,12 @@ fun FeeSplitterV2.sendAny(
 
 fun FeeSplitterV2.getSplitterData(self): SplitterStorage {
     return net.runGetMethod(self.address, "get_splitter_data");
+}
+
+fun FeeSplitterV2.getFeeBalance(self, recipient: address, protocol: bool): FeeBalance {
+    return net.runGetMethod(self.address, "get_fee_balance", [recipient, protocol]);
+}
+
+fun FeeSplitterV2.getBeneficiaries(self): map<address, uint16> {
+    return net.runGetMethod(self.address, "get_beneficiaries");
 }

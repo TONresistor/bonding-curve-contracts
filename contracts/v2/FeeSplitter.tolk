@@ -13,6 +13,7 @@ contract FeeSplitterV2 {
 
 type SplitterMessages =
     | CreditNativeFees
+    | CreditCurveFees
     | TransferNotificationForRecipient
     | ClaimSplitFees
     | TransferDelivered
@@ -38,7 +39,13 @@ fun onInternalMessage(in: InMessage) {
             assert (in.senderAddress == c.collector && in.valueCoins >= msg.amount) throw 73;
             val protocol = msg.amount * 10 / (10 + r.creatorBps);
             s.protocolTon += protocol;
-            s.creatorTon += msg.amount - protocol;
+            creditBeneficiaries(mutate s, r, msg.amount - protocol, 0);
+        }
+        CreditCurveFees => {
+            assert (
+                r.curve != null && in.senderAddress == r.curve! && in.valueCoins >= msg.amount
+            ) throw 73;
+            creditBeneficiaries(mutate s, r, msg.amount, 0);
         }
         TransferNotificationForRecipient => {
             assert (
@@ -47,20 +54,24 @@ fun onInternalMessage(in: InMessage) {
             ) throw 73;
             val protocol = msg.jettonAmount * 10 / (10 + r.creatorBps);
             s.protocolTokens += protocol;
-            s.creatorTokens += msg.jettonAmount - protocol;
+            creditBeneficiaries(mutate s, r, 0, msg.jettonAmount - protocol);
         }
         ClaimSplitFees => {
-            val recipient = msg.protocol ? r.protocol : r.creator;
-            assert (in.senderAddress == recipient) throw 73;
+            val recipient = in.senderAddress;
+            assert (
+                msg.protocol ? recipient == r.protocol : beneficiaryShares(r).exists(recipient)
+            ) throw 73;
             assert (in.valueCoins >= ton("0.2")) throw 48;
-            val native = msg.protocol ? s.protocolTon : s.creatorTon;
-            val tokens = msg.protocol ? s.protocolTokens : s.creatorTokens;
+            val balance = feeBalance(s, recipient);
+            val native = msg.protocol ? s.protocolTon : balance.tonAmount;
+            val tokens = msg.protocol ? s.protocolTokens : balance.tokenAmount;
             if (msg.protocol) {
                 s.protocolTon = 0;
                 s.protocolTokens = 0;
             } else {
-                s.creatorTon = 0;
-                s.creatorTokens = 0;
+                s.creatorTon -= native;
+                s.creatorTokens -= tokens;
+                s.balances.delete(recipient);
             }
             if (native > 0) {
                 createMessage({ bounce: false, dest: recipient, value: native, body: ReturnExcessesBack {
@@ -144,6 +155,9 @@ fun restorePayout(mutate s: SplitterStorage, id: uint64, amount: coins) {
             s.protocolTokens += p.amount;
         } else {
             s.creatorTokens += p.amount;
+            var balance = feeBalance(s, p.recipient);
+            balance.tokenAmount += p.amount;
+            s.balances.set(p.recipient, balance);
         }
         s.pending.delete(id);
     }
@@ -151,4 +165,52 @@ fun restorePayout(mutate s: SplitterStorage, id: uint64, amount: coins) {
 
 get fun get_splitter_data(): SplitterStorage {
     return SplitterStorage.fromCell(contract.getData());
+}
+
+fun feeBalance(s: SplitterStorage, recipient: address): FeeBalance {
+    val found = s.balances.get(recipient);
+    return found.isFound
+        ? found.loadValue()
+        : FeeBalance {
+            tonAmount: 0,
+            tokenAmount: 0,
+        };
+}
+
+fun creditBeneficiaries(mutate s: SplitterStorage, r: FeeRecipients, native: coins, tokens: coins) {
+    val shares = beneficiaryShares(r);
+    var item = shares.findFirst();
+    var cumulative = 0;
+    var assignedTon: coins = 0;
+    var assignedTokens: coins = 0;
+    while (item.isFound) {
+        cumulative += item.loadValue();
+        val nextTon = native * cumulative / 10000;
+        val nextTokens = tokens * cumulative / 10000;
+        var balance = feeBalance(s, item.getKey());
+        balance.tonAmount += nextTon - assignedTon;
+        balance.tokenAmount += nextTokens - assignedTokens;
+        s.balances.set(item.getKey(), balance);
+        assignedTon = nextTon;
+        assignedTokens = nextTokens;
+        item = shares.iterateNext(item);
+    }
+    assert (cumulative == 10000) throw 49;
+    s.creatorTon += native;
+    s.creatorTokens += tokens;
+}
+
+get fun get_fee_balance(recipient: address, protocol: bool = false): FeeBalance {
+    val s = SplitterStorage.fromCell(contract.getData());
+    if (protocol) {
+        assert (recipient == s.config.load().recipients.load().protocol) throw 73;
+        return { tonAmount: s.protocolTon, tokenAmount: s.protocolTokens };
+    }
+    return feeBalance(s, recipient);
+}
+
+get fun get_beneficiaries(): map<address, uint16> {
+    return beneficiaryShares(
+        SplitterStorage.fromCell(contract.getData()).config.load().recipients.load(),
+    );
 }

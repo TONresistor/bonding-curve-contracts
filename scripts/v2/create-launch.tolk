@@ -6,8 +6,10 @@ import "@wrappers/BondingCurveMasterV2.gen"
 import "@contracts/v2/bonding-dedust"
 import "@contracts/v2/bonding-math"
 import "@contracts/v2/bonding-storage"
+import "@contracts/v2/fee-storage"
+import "arguments"
 
-fun main(
+fun createLaunch(
     walletName: string,
     masterAddress: address,
     metadataUri: string,
@@ -16,17 +18,42 @@ fun main(
     creatorFeeBps: uint16,
     devBuyNano: coins,
     minDevTokens: coins,
+    graduationTon: int = 2000,
+    reserveRatio: uint8 = 5,
+    minBuyNano: coins = 0,
+    maxBuyNano: coins = 0,
+    beneficiaryWallets: array<address> = [],
+    beneficiaryBps: array<uint16> = [],
 ) {
-    val wallet = scripts.wallet(walletName);
+    val wallet = scripts.wallet(scriptString(walletName));
+    assert (beneficiaryWallets.size() == beneficiaryBps.size()) throw 49;
+    var beneficiaries: Cell<FeeBeneficiaries>? = null;
+    if (beneficiaryWallets.size() > 0) {
+        var shares: map<address, uint16> = [];
+        var i = 0;
+        while (i < beneficiaryWallets.size()) {
+            val recipient = beneficiaryWallets.get(i);
+            assert (!shares.exists(recipient)) throw 49;
+            shares.set(recipient, beneficiaryBps.get(i));
+            i += 1;
+        }
+        beneficiaries = FeeBeneficiaries { shares }.toCell();
+    }
     val options = LaunchOptions {
         supply: supplyTokens * 1000000000,
         creatorFeeBps,
         devBuyAmount: devBuyNano,
         minDevTokens,
+        graduationThreshold: graduationTon * 1000000000,
+        reserveRatio,
+        minBuy: minBuyNano,
+        maxBuy: maxBuyNano,
+        beneficiaries,
     };
     validateLaunchOptions(options);
     println("Effective fees (parts per billion): {}", effectiveFeeRates(creatorFeeBps));
-    val metadata = beginCell().storeUint(1, 8).storeString(metadataUri).endCell();
+    println("Launch preview: {}", previewLaunch(options));
+    val metadata = beginCell().storeUint(1, 8).storeString(scriptString(metadataUri)).endCell();
     val master = BondingCurveMasterV2.fromAddress(masterAddress);
     master
         .sendCreateLaunch(
@@ -41,5 +68,39 @@ fun main(
     println(
         "Launch requested; verify completion at curve={}",
         master.getLaunchAddress(wallet.address, salt, options),
+    );
+}
+
+fun main(
+    walletName: string,
+    masterAddress: address,
+    metadataUri: string,
+    salt: uint64,
+    supplyTokens: int,
+    creatorFeeBps: uint16,
+    devBuyNano: coins,
+    minDevTokens: coins,
+    graduationTon: int = 2000,
+    reserveRatio: uint8 = 5,
+    minBuyNano: coins = 0,
+    maxBuyNano: coins = 0,
+    beneficiaryWallets: array<address> = [],
+    beneficiaryBps: array<uint16> = [],
+) {
+    createLaunch(
+        walletName,
+        masterAddress,
+        metadataUri,
+        salt,
+        supplyTokens,
+        creatorFeeBps,
+        devBuyNano,
+        minDevTokens,
+        graduationTon,
+        reserveRatio,
+        minBuyNano,
+        maxBuyNano,
+        beneficiaryWallets,
+        beneficiaryBps,
     );
 }

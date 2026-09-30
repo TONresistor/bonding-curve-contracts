@@ -1,3 +1,5 @@
+import "fee-storage"
+
 struct MigrationProgress {
     nativeQueryId: uint64
     jettonQueryId: uint64
@@ -15,6 +17,11 @@ struct LaunchOptions {
     creatorFeeBps: uint16
     devBuyAmount: coins
     minDevTokens: coins
+    graduationThreshold: coins = ton("2000")
+    reserveRatio: uint8 = 5
+    minBuy: coins = 0
+    maxBuy: coins = 0
+    beneficiaries: Cell<FeeBeneficiaries>? = null
 }
 
 struct LaunchProgress {
@@ -122,4 +129,15 @@ struct FeeRatesReply {
     poolCreatorPpb: int
     poolLpPpb: int
     dedustPpb: int
+}
+
+struct LaunchPreview {
+    virtualTonReserve: coins
+    graduationThreshold: coins
+    soldTokens: coins
+    poolTon: coins
+    poolTokens: coins
+    remainingTokens: coins
+    initialPriceNanoPerBillion: int
+    graduationPriceNanoPerBillion: int
 }

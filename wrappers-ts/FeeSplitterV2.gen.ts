@@ -170,10 +170,83 @@ type uint16 = bigint
 type uint64 = bigint
 
 /**
+ > struct FeeBeneficiaries {
+ >     shares: map<address, uint16>
+ > }
+ */
+export interface FeeBeneficiaries {
+    readonly $: 'FeeBeneficiaries'
+    shares: c.Dictionary<c.Address, uint16>
+}
+
+export const FeeBeneficiaries = {
+    create(args: {
+        shares: c.Dictionary<c.Address, uint16>
+    }): FeeBeneficiaries {
+        return {
+            $: 'FeeBeneficiaries',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): FeeBeneficiaries {
+        return {
+            $: 'FeeBeneficiaries',
+            shares: c.Dictionary.load<c.Address, uint16>(c.Dictionary.Keys.Address(), c.Dictionary.Values.BigUint(16), s),
+        }
+    },
+    store(self: FeeBeneficiaries, b: c.Builder): void {
+        b.storeDict<c.Address, uint16>(self.shares, c.Dictionary.Keys.Address(), c.Dictionary.Values.BigUint(16));
+    },
+    toCell(self: FeeBeneficiaries): c.Cell {
+        return makeCellFrom<FeeBeneficiaries>(self, FeeBeneficiaries.store);
+    }
+}
+
+/**
+ > struct FeeBalance {
+ >     tonAmount: coins
+ >     tokenAmount: coins
+ > }
+ */
+export interface FeeBalance {
+    readonly $: 'FeeBalance'
+    tonAmount: coins
+    tokenAmount: coins
+}
+
+export const FeeBalance = {
+    create(args: {
+        tonAmount: coins
+        tokenAmount: coins
+    }): FeeBalance {
+        return {
+            $: 'FeeBalance',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): FeeBalance {
+        return {
+            $: 'FeeBalance',
+            tonAmount: s.loadCoins(),
+            tokenAmount: s.loadCoins(),
+        }
+    },
+    store(self: FeeBalance, b: c.Builder): void {
+        b.storeCoins(self.tonAmount);
+        b.storeCoins(self.tokenAmount);
+    },
+    toCell(self: FeeBalance): c.Cell {
+        return makeCellFrom<FeeBalance>(self, FeeBalance.store);
+    }
+}
+
+/**
  > struct FeeRecipients {
  >     creator: address
  >     protocol: address
  >     creatorBps: uint16
+ >     curve: address?
+ >     beneficiaries: Cell<FeeBeneficiaries>?
  > }
  */
 export interface FeeRecipients {
@@ -181,6 +254,8 @@ export interface FeeRecipients {
     creator: c.Address
     protocol: c.Address
     creatorBps: uint16
+    curve: c.Address | null /* = null */
+    beneficiaries: CellRef<FeeBeneficiaries> | null /* = null */
 }
 
 export const FeeRecipients = {
@@ -188,9 +263,13 @@ export const FeeRecipients = {
         creator: c.Address
         protocol: c.Address
         creatorBps: uint16
+        curve?: c.Address | null /* = null */
+        beneficiaries?: CellRef<FeeBeneficiaries> | null /* = null */
     }): FeeRecipients {
         return {
             $: 'FeeRecipients',
+            curve: null,
+            beneficiaries: null,
             ...args
         }
     },
@@ -200,12 +279,18 @@ export const FeeRecipients = {
             creator: s.loadAddress(),
             protocol: s.loadAddress(),
             creatorBps: s.loadUintBig(16),
+            curve: s.loadMaybeAddress(),
+            beneficiaries: s.loadBoolean() ? loadCellRef<FeeBeneficiaries>(s, FeeBeneficiaries.fromSlice) : null,
         }
     },
     store(self: FeeRecipients, b: c.Builder): void {
         b.storeAddress(self.creator);
         b.storeAddress(self.protocol);
         b.storeUint(self.creatorBps, 16);
+        b.storeAddress(self.curve);
+        storeTolkNullable<CellRef<FeeBeneficiaries>>(self.beneficiaries, b,
+            (v,b) => storeCellRef<FeeBeneficiaries>(v, b, FeeBeneficiaries.store)
+        );
     },
     toCell(self: FeeRecipients): c.Cell {
         return makeCellFrom<FeeRecipients>(self, FeeRecipients.store);
@@ -307,6 +392,7 @@ export const TokenPayout = {
  >     protocolTokens: coins
  >     nextId: uint64
  >     pending: map<uint64, TokenPayout>
+ >     balances: map<address, FeeBalance>
  > }
  */
 export interface SplitterStorage {
@@ -318,6 +404,7 @@ export interface SplitterStorage {
     protocolTokens: coins
     nextId: uint64
     pending: c.Dictionary<uint64, TokenPayout>
+    balances: c.Dictionary<c.Address, FeeBalance> /* = [] as map<address, FeeBalance> */
 }
 
 export const SplitterStorage = {
@@ -329,6 +416,7 @@ export const SplitterStorage = {
         protocolTokens: coins
         nextId: uint64
         pending: c.Dictionary<uint64, TokenPayout>
+        balances: c.Dictionary<c.Address, FeeBalance> /* = [] as map<address, FeeBalance> */
     }): SplitterStorage {
         return {
             $: 'SplitterStorage',
@@ -345,6 +433,7 @@ export const SplitterStorage = {
             protocolTokens: s.loadCoins(),
             nextId: s.loadUintBig(64),
             pending: c.Dictionary.load<uint64, TokenPayout>(c.Dictionary.Keys.BigUint(64), createDictionaryValue<TokenPayout>(TokenPayout.fromSlice, TokenPayout.store), s),
+            balances: c.Dictionary.load<c.Address, FeeBalance>(c.Dictionary.Keys.Address(), createDictionaryValue<FeeBalance>(FeeBalance.fromSlice, FeeBalance.store), s),
         }
     },
     store(self: SplitterStorage, b: c.Builder): void {
@@ -355,6 +444,7 @@ export const SplitterStorage = {
         b.storeCoins(self.protocolTokens);
         b.storeUint(self.nextId, 64);
         b.storeDict<uint64, TokenPayout>(self.pending, c.Dictionary.Keys.BigUint(64), createDictionaryValue<TokenPayout>(TokenPayout.fromSlice, TokenPayout.store));
+        b.storeDict<c.Address, FeeBalance>(self.balances, c.Dictionary.Keys.Address(), createDictionaryValue<FeeBalance>(FeeBalance.fromSlice, FeeBalance.store));
     },
     toCell(self: SplitterStorage): c.Cell {
         return makeCellFrom<SplitterStorage>(self, SplitterStorage.store);
@@ -442,6 +532,48 @@ export const ClaimSplitFees = {
     },
     toCell(self: ClaimSplitFees): c.Cell {
         return makeCellFrom<ClaimSplitFees>(self, ClaimSplitFees.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b044) CreditCurveFees {
+ >     queryId: uint64
+ >     amount: coins
+ > }
+ */
+export interface CreditCurveFees {
+    readonly $: 'CreditCurveFees'
+    queryId: uint64
+    amount: coins
+}
+
+export const CreditCurveFees = {
+    PREFIX: 0xa0a0b044,
+
+    create(args: {
+        queryId: uint64
+        amount: coins
+    }): CreditCurveFees {
+        return {
+            $: 'CreditCurveFees',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): CreditCurveFees {
+        loadAndCheckPrefix32(s, 0xa0a0b044, 'CreditCurveFees');
+        return {
+            $: 'CreditCurveFees',
+            queryId: s.loadUintBig(64),
+            amount: s.loadCoins(),
+        }
+    },
+    store(self: CreditCurveFees, b: c.Builder): void {
+        b.storeUint(0xa0a0b044, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.amount);
+    },
+    toCell(self: CreditCurveFees): c.Cell {
+        return makeCellFrom<CreditCurveFees>(self, CreditCurveFees.store);
     }
 }
 
@@ -856,7 +988,7 @@ function calculateDeployedAddress(code: c.Cell, data: c.Cell, options: DeployedA
 }
 
 export class FeeSplitterV2 implements c.Contract {
-    static CodeCell = c.Cell.fromBase64('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');
+    static CodeCell = c.Cell.fromBase64('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');
 
     static Errors = {
         'Errors.NotEnoughGas': 48,
@@ -882,6 +1014,7 @@ export class FeeSplitterV2 implements c.Contract {
         protocolTokens: coins
         nextId: uint64
         pending: c.Dictionary<uint64, TokenPayout>
+        balances: c.Dictionary<c.Address, FeeBalance> /* = [] as map<address, FeeBalance> */
     }, deployedOptions?: DeployedAddrOptions) {
         const initialState = {
             code: deployedOptions?.overrideContractCode ?? FeeSplitterV2.CodeCell,
@@ -896,6 +1029,13 @@ export class FeeSplitterV2 implements c.Contract {
         amount: coins
     }) {
         return CreditNativeFees.toCell(CreditNativeFees.create(body));
+    }
+
+    static createCellOfCreditCurveFees(body: {
+        queryId: uint64
+        amount: coins
+    }) {
+        return CreditCurveFees.toCell(CreditCurveFees.create(body));
     }
 
     static createCellOfTransferNotificationForRecipient(body: {
@@ -954,6 +1094,17 @@ export class FeeSplitterV2 implements c.Contract {
         return provider.internal(via, {
             value: msgValue,
             body: CreditNativeFees.toCell(CreditNativeFees.create(body)),
+            ...extraOptions
+        });
+    }
+
+    async sendCreditCurveFees(provider: ContractProvider, via: Sender, msgValue: coins, body: {
+        queryId: uint64
+        amount: coins
+    }, extraOptions?: ExtraSendOptions) {
+        return provider.internal(via, {
+            value: msgValue,
+            body: CreditCurveFees.toCell(CreditCurveFees.create(body)),
             ...extraOptions
         });
     }
@@ -1024,7 +1175,7 @@ export class FeeSplitterV2 implements c.Contract {
     }
 
     async getSplitterData(provider: ContractProvider): Promise<SplitterStorage> {
-        const r = StackReader.fromGetMethod(7, await provider.get('get_splitter_data', []));
+        const r = StackReader.fromGetMethod(8, await provider.get('get_splitter_data', []));
         return ({
             $: 'SplitterStorage',
             config: r.readCellRef<SplitterConfig>(SplitterConfig.fromSlice),
@@ -1034,6 +1185,26 @@ export class FeeSplitterV2 implements c.Contract {
             protocolTokens: r.readBigInt(),
             nextId: r.readBigInt(),
             pending: r.readDictionary<uint64, TokenPayout>(c.Dictionary.Keys.BigUint(64), createDictionaryValue<TokenPayout>(TokenPayout.fromSlice, TokenPayout.store)),
+            balances: r.readDictionary<c.Address, FeeBalance>(c.Dictionary.Keys.Address(), createDictionaryValue<FeeBalance>(FeeBalance.fromSlice, FeeBalance.store)),
         });
+    }
+
+    async getFeeBalance(provider: ContractProvider, recipient: c.Address, protocol: boolean = false): Promise<FeeBalance> {
+        const r = StackReader.fromGetMethod(2, await provider.get('get_fee_balance', [
+            { type: 'slice', cell: makeCellFrom<c.Address>(recipient,
+                (v,b) => b.storeAddress(v)
+            ) },
+            { type: 'int', value: (protocol ? -1n : 0n) },
+        ]));
+        return ({
+            $: 'FeeBalance',
+            tonAmount: r.readBigInt(),
+            tokenAmount: r.readBigInt(),
+        });
+    }
+
+    async getBeneficiaries(provider: ContractProvider): Promise<c.Dictionary<c.Address, uint16>> {
+        const r = StackReader.fromGetMethod(1, await provider.get('get_beneficiaries', []));
+        return r.readDictionary<c.Address, uint16>(c.Dictionary.Keys.Address(), c.Dictionary.Values.BigUint(16));
     }
 }

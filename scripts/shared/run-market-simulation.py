@@ -101,14 +101,14 @@ def main():
                                     env={**os.environ, "NO_COLOR": "1"})
         contents = log.read_text()
         metrics = dict(re.findall(r"^METRIC (\w+) (\S+)$", contents, re.MULTILINE))
-        marker = "V2_MATRIX_PASS scenarios=60 presets=15 wallets=10" if args.profile == "v2" else "MARKET_PASS"
+        marker = "V2_MATRIX_PASS scenarios=540 presets=135 wallets=10" if args.profile == "v2" else "MARKET_PASS"
         passed = result.returncode == 0 and marker in contents and "MARKET_FAIL" not in contents
         if args.profile == "v2":
             cases = re.findall(r"^V2_PASS (.*)$", contents, re.MULTILINE)
-            metrics = {"scenarios": len(cases), "presets": 15, "migrations": len(cases), "cases": cases}
+            metrics = {"scenarios": len(cases), "presets": 135, "migrations": len(cases), "cases": cases}
             finalizations = re.findall(r"^FINALIZATION_PASS mode=(\d+)$", contents, re.MULTILINE)
             metrics["finalization_checks"] = len(finalizations)
-            passed = passed and len(cases) == 60 and sorted(finalizations) == ["0", "1"]
+            passed = passed and len(cases) == 540 and sorted(finalizations) == ["0", "1"]
         run = {"seed": seed, "passed": passed, "exit_code": result.returncode,
                "seconds": round(time.monotonic() - start, 3), "metrics": metrics,
                "log": str(log.relative_to(ROOT)), "command": command,
@@ -124,7 +124,8 @@ def main():
                   f"claims={metrics.get('claims', '?')}", flush=True)
         if not passed:
             print("\n".join(contents.splitlines()[-35:]), file=sys.stderr)
-            print(f"Replay: python3 scripts/shared/run-market-simulation.py replay --seed {seed} "
+            profile = "v2" if args.profile == "v2" else "replay"
+            print(f"Replay: python3 scripts/shared/run-market-simulation.py {profile} --seed {seed} "
                   f"--operations {operations} --actors {actors}" +
                   (f" --fork-block {args.fork_block}" if args.fork_block else " --offline"), file=sys.stderr)
             return 1

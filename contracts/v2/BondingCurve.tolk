@@ -4,6 +4,8 @@ import "bonding-math"
 import "bonding-messages"
 import "bonding-storage"
 import "collector-address"
+import "fee-addresses"
+import "fee-storage"
 import "wallet-messages"
 import "../v1/bonding-config"
 import "../v1/errors"
@@ -26,6 +28,7 @@ type AllowedMessageToCurve =
     | ReturnExcessesBack
     | LaunchMintFailed
     | ClaimCurveCreatorFees
+    | FlushCreatorFees
     | BuyJettons
     | FlushFees
     | Graduate
@@ -48,6 +51,7 @@ type BounceableOutboundOps =
     | DropMinterAdmin
     | DedustInit
     | ProvidePositionState
+    | CreditCurveFees
 
 fun emptyForwardPayload(): slice {
     return beginCell().storeUint(0, 1).toSlice();
@@ -143,19 +147,16 @@ fun onInternalMessage(in: InMessage) {
                 storage.state != CURVE_STATE_INITIALIZING && storage.state != CURVE_STATE_CANCELLED
             ) throw Errors.InvalidOp;
             assert (in.valueCoins >= ton("0.05")) throw Errors.NotEnoughGas;
-            var progress = storage.progress.load();
-            val amount = progress.creatorAccrued;
-            progress.creatorAccrued = 0;
-            storage.progress = progress.toCell();
-            storage.save();
-            if (amount > 0) {
-                createMessage({
-                    bounce: false,
-                    dest: config.creator,
-                    value: amount,
-                    body: ReturnExcessesBack { queryId: msg.queryId },
-                }).send(SEND_MODE_PAY_FEES_SEPARATELY);
-            }
+            flushCreatorFees(mutate storage, msg.queryId);
+        }
+
+        FlushCreatorFees => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                storage.state != CURVE_STATE_INITIALIZING && storage.state != CURVE_STATE_CANCELLED
+            ) throw Errors.InvalidOp;
+            assert (in.valueCoins >= ton("0.05")) throw Errors.NotEnoughGas;
+            flushCreatorFees(mutate storage, msg.queryId);
         }
 
         BuyJettons => {
@@ -168,6 +169,9 @@ fun onInternalMessage(in: InMessage) {
             assert (in.valueCoins >= CURVE_TRANSFER_VALUE + ton("0.01")) throw Errors.NotEnoughGas;
 
             val tonIn = in.valueCoins - CURVE_TRANSFER_VALUE;
+            val options = config.options.load();
+            assert (tonIn >= options.minBuy) throw Errors.InvalidMessage;
+            assert (options.maxBuy == 0 || tonIn <= options.maxBuy) throw Errors.InvalidMessage;
             val (jettonsOut, feeTon) = computeBuyOut(
                 tonIn,
                 storage.virtualTonReserve,
@@ -199,7 +203,10 @@ fun onInternalMessage(in: InMessage) {
             storage.migrationReserve += migrationCut;
             storage.feeAccrued += (protocolFee - migrationCut);
 
-            val crossedThreshold = storage.realTonReserve >= GRADUATION_THRESHOLD_TON;
+            val crossedThreshold = shouldGraduate(
+                storage.realTonReserve,
+                config.graduationThreshold,
+            );
             if (crossedThreshold) {
                 storage.state = CURVE_STATE_FROZEN;
             }
@@ -560,7 +567,9 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 storage.state == CURVE_STATE_TRADING || storage.state == CURVE_STATE_FROZEN
             ) throw Errors.InvalidOp;
-            assert (shouldGraduate(storage.realTonReserve)) throw Errors.InvalidOp;
+            assert (
+                shouldGraduate(storage.realTonReserve, config.graduationThreshold)
+            ) throw Errors.InvalidOp;
             assert (
                 storage.migrationReserve >= DEDUST_GRADUATE_GAS_BUDGET
             ) throw Errors.NotEnoughGas;
@@ -774,6 +783,15 @@ fun onBouncedMessage(in: InMessageBounced) {
             storage.feeAccrued += parsed.amount;
             storage.save();
         }
+        CreditCurveFees => {
+            assert (
+                in.senderAddress == curveFeeManager(storage).calculateAddress()
+            ) throw Errors.NotOwner;
+            var progress = storage.progress.load();
+            progress.creatorAccrued += parsed.amount;
+            storage.progress = progress.toCell();
+            storage.save();
+        }
         DropMinterAdmin => {}
         ProvidePositionState => {}
         DedustInit => {
@@ -877,7 +895,7 @@ get fun get_version(): int {
 
 get fun get_progress_bps(): int {
     val storage = lazy BondingCurveStorage.load();
-    val raw = storage.realTonReserve * 10000 / GRADUATION_THRESHOLD_TON;
+    val raw = storage.realTonReserve * 10000 / storage.config.load().graduationThreshold;
     return raw > 10000 ? 10000 : raw;
 }
 
@@ -906,7 +924,10 @@ fun mintLaunchTokens(
 fun finishLaunch(mutate storage: BondingCurveStorage) {
     val progress = storage.progress.load();
     if (progress.curveReceived && progress.devReceived) {
-        storage.state = shouldGraduate(storage.realTonReserve)
+        storage.state = shouldGraduate(
+            storage.realTonReserve,
+            storage.config.load().graduationThreshold,
+        )
             ? CURVE_STATE_FROZEN
             : CURVE_STATE_TRADING;
         val collector = curveCollector(storage);
@@ -973,11 +994,58 @@ fun curveCollector(storage: BondingCurveStorage): AutoDeployAddress {
         config.creator,
         storage.progress.load().protocolTreasury!,
         config.options.load().creatorFeeBps,
+        contract.getAddress(),
+        config.options.load().beneficiaries,
     );
 }
 
 get fun get_collector_address(): address {
     return curveCollector(BondingCurveStorage.load()).calculateAddress();
+}
+
+fun curveFeeManager(storage: BondingCurveStorage): AutoDeployAddress {
+    val config = storage.config.load();
+    val options = config.options.load();
+    val recipients = FeeRecipients {
+        creator: config.creator,
+        protocol: storage.progress.load().protocolTreasury!,
+        creatorBps: options.creatorFeeBps,
+        curve: contract.getAddress(),
+        beneficiaries: options.beneficiaries,
+    }.toCell();
+    return splitterAddress(
+        curveCollector(storage).calculateAddress(),
+        storage.jettonMinter!,
+        recipients,
+    );
+}
+
+fun flushCreatorFees(mutate storage: BondingCurveStorage, id: uint64) {
+    var progress = storage.progress.load();
+    val amount = progress.creatorAccrued;
+    if (amount == 0) {
+        return;
+    }
+    progress.creatorAccrued = 0;
+    storage.progress = progress.toCell();
+    storage.save();
+    createMessage({
+        bounce: true,
+        dest: curveFeeManager(storage),
+        value: amount + ton("0.03"),
+        body: CreditCurveFees {
+            queryId: id,
+            amount,
+        },
+    }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
+
+get fun get_fee_manager_address(): address {
+    return curveFeeManager(BondingCurveStorage.load()).calculateAddress();
+}
+
+get fun get_launch_preview(): LaunchPreview {
+    return previewLaunch(BondingCurveStorage.load().config.load().options.load());
 }
 
 get fun get_pool_address(): address {

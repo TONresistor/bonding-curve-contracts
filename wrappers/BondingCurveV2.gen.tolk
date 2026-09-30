@@ -133,6 +133,21 @@ fun BondingCurveV2.sendClaimCurveCreatorFees(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendFlushCreatorFees(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: FlushCreatorFees { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun BondingCurveV2.sendBuyJettons(
     self,
     from: address,
@@ -383,6 +398,14 @@ fun BondingCurveV2.getLaunchProgress(self): LaunchProgress {
 
 fun BondingCurveV2.getCollectorAddress(self): address {
     return net.runGetMethod(self.address, "get_collector_address");
+}
+
+fun BondingCurveV2.getFeeManagerAddress(self): address {
+    return net.runGetMethod(self.address, "get_fee_manager_address");
+}
+
+fun BondingCurveV2.getLaunchPreview(self): LaunchPreview {
+    return net.runGetMethod(self.address, "get_launch_preview");
 }
 
 fun BondingCurveV2.getPoolAddress(self): address {

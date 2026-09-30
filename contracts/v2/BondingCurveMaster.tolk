@@ -50,13 +50,13 @@ fun calcDeployedBondingCurve(
         salt,
         curveSupply: options.load().supply * 9 / 10,
         dexReserveSupply: options.load().supply / 10,
-        graduationThreshold: GRADUATION_THRESHOLD_TON,
+        graduationThreshold: options.load().graduationThreshold,
         options,
     };
     val initStorage: BondingCurveStorage = {
         state: CURVE_STATE_INITIALIZING,
         jettonMinter: null,
-        virtualTonReserve: VIRTUAL_TON_RESERVE_INIT,
+        virtualTonReserve: initialVirtualReserve(options.load()),
         realTonReserve: 0,
         curveJettonBalance: 0,
         feeAccrued: 0,
@@ -106,7 +106,7 @@ fun onInternalMessage(in: InMessage) {
             if (options.devBuyAmount > 0) {
                 val (devTokens, _) = computeBuyOut(
                     options.devBuyAmount,
-                    VIRTUAL_TON_RESERVE_INIT,
+                    initialVirtualReserve(options),
                     0,
                     options.supply,
                     options.creatorFeeBps,
@@ -166,7 +166,7 @@ fun onInternalMessage(in: InMessage) {
                     salt: msg.salt,
                     curveAddress: curveAddr,
                     minterAddress: minterAddr,
-                    virtualTonReserve: VIRTUAL_TON_RESERVE_INIT,
+                    virtualTonReserve: initialVirtualReserve(options),
                 },
             });
             launchEventMsg.send(SEND_MODE_REGULAR);
@@ -396,6 +396,10 @@ get fun get_launch_address(creator: address, salt: uint64, options: Cell<LaunchO
 
 get fun get_storage_reserve(): coins {
     return MASTER_STORAGE_RESERVE;
+}
+
+get fun get_launch_preview(options: Cell<LaunchOptions>): LaunchPreview {
+    return previewLaunch(options.load());
 }
 
 get fun get_version(): int {

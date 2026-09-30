@@ -124,6 +124,21 @@ fun FeeCollectorV2.sendTopUpTons(self, from: address, config: SendParams = {}): 
     return net.send(from, genericMsg);
 }
 
+fun FeeCollectorV2.sendRetryCollectedFees(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: RetryCollectedFees { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
 /// Send message to the contract with a custom body cell
 fun FeeCollectorV2.sendAny(
     self,

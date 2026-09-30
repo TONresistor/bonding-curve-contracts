@@ -282,6 +282,10 @@ fun BondingCurveMasterV2.getStorageReserve(self): coins {
     return net.runGetMethod(self.address, "get_storage_reserve");
 }
 
+fun BondingCurveMasterV2.getLaunchPreview(self, options: LaunchOptions): LaunchPreview {
+    return net.runGetMethod(self.address, "get_launch_preview", [options.toCell()]);
+}
+
 fun BondingCurveMasterV2.getVersion(self): int {
     return net.runGetMethod(self.address, "get_version");
 }

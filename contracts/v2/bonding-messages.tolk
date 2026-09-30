@@ -167,6 +167,10 @@ struct (0xa0a0b031) ClaimCurveCreatorFees {
     queryId: uint64
 }
 
+struct (0xa0a0b034) FlushCreatorFees {
+    queryId: uint64
+}
+
 struct (0xa0a0b032) CancelLaunchFees {
     queryId: uint64
     creator: address

@@ -20,6 +20,7 @@ type CollectorMessages =
     | DedustNativePayout
     | ReturnExcessesBack
     | TopUpTons
+    | RetryCollectedFees
 
 fun onInternalMessage(in: InMessage) {
     if (in.body.isEmpty()) {
@@ -56,11 +57,12 @@ fun onInternalMessage(in: InMessage) {
         }
         DedustNativePayout => {
             assert (in.senderAddress == pool) throw 73;
-            createMessage({ bounce: false, dest: split, value: in.valueCoins +
-                    ton("0.02"), body: CreditNativeFees {
-                    queryId: msg.queryId,
-                    amount: in.valueCoins,
-                } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
+            s.nativeAccrued += in.valueCoins;
+            flushCollectedNative(mutate s);
+        }
+        RetryCollectedFees => {
+            assert (in.valueCoins >= ton("0.05")) throw 48;
+            flushCollectedNative(mutate s);
         }
         SweepCollectedTokens => {
             assert (s.initialized && in.valueCoins >= ton("0.4") && msg.amount > 0) throw 48;
@@ -86,7 +88,36 @@ fun onInternalMessage(in: InMessage) {
     contract.setData(s.toCell());
 }
 
-fun onBouncedMessage(in: InMessageBounced) {}
+fun onBouncedMessage(in: InMessageBounced) {
+    var s = CollectorStorage.fromCell(contract.getData());
+    val split = splitterAddress(contract.getAddress(), s.minter, s.recipients);
+    if (in.senderAddress != split.calculateAddress()) {
+        return;
+    }
+    in.bouncedBody.skipBouncedPrefix();
+    val msg = lazy CreditNativeFees.fromSlice(in.bouncedBody);
+    s.nativeAccrued += msg.amount;
+    contract.setData(s.toCell());
+}
+
+fun flushCollectedNative(mutate s: CollectorStorage) {
+    val amount = s.nativeAccrued;
+    if (amount == 0) {
+        return;
+    }
+    val id = s.nextId;
+    s.nextId += 1;
+    s.nativeAccrued = 0;
+    createMessage({
+        bounce: true,
+        dest: splitterAddress(contract.getAddress(), s.minter, s.recipients),
+        value: amount + ton("0.03"),
+        body: CreditNativeFees {
+            queryId: id,
+            amount,
+        },
+    }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
 
 get fun get_splitter_address(): address {
     val s = CollectorStorage.fromCell(contract.getData());

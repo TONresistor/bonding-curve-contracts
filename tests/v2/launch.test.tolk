@@ -4,6 +4,7 @@ import "@acton/emulation/testing"
 import "@acton/testing/expect"
 import "@wrappers/BondingCurveMasterV2.gen"
 import "@wrappers/BondingCurveV2.gen"
+import "@wrappers/FeeSplitterV2.gen"
 import "@wrappers/JettonMinterV2.gen"
 import "@wrappers/JettonWallet.gen"
 import "@contracts/v1/bonding-config"
@@ -57,11 +58,13 @@ fun launchScenario(supply: coins, fee: uint16, dev: coins, salt: uint64) {
     ).toEqual(quote);
     expect(curve.getLaunchProgress().creatorAccrued).toEqual(before + ton("10") * fee / 10000);
     val earned = curve.getLaunchProgress().creatorAccrued;
-    val claim = curve.sendClaimCurveCreatorFees(creator.address, 9, { value: ton("0.05") });
+    curve.sendClaimCurveCreatorFees(creator.address, 9, { value: ton("0.05") });
+    val manager = FeeSplitterV2.fromAddress(curve.getFeeManagerAddress());
+    val claim = manager.sendClaimSplitFees(creator.address, 9, false, { value: ton("0.2") });
     if (earned > 0) {
         expect(
             claim,
-        ).toHaveSuccessfulTx<ReturnExcessesBack>({ from: curve.address, to: creator.address, value: earned });
+        ).toHaveSuccessfulTx<ReturnExcessesBack>({ from: manager.address, to: creator.address, value: earned });
     }
     expect(curve.getLaunchProgress().creatorAccrued).toEqual(0);
     curve.sendClaimCurveCreatorFees(creator.address, 10, { value: ton("0.05") });
