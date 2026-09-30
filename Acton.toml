@@ -92,6 +92,7 @@ simulate-migration = "acton script scripts/simulate-migration.tolk --fork-net ma
 market-quick = "python3 scripts/run-market-simulation.py quick"
 market-campaign = "python3 scripts/run-market-simulation.py campaign"
 market-replay = "python3 scripts/run-market-simulation.py replay"
+v2-simulation = "python3 scripts/run-market-simulation.py v2"
 
 [import-mappings]
 acton = ".acton"
@@ -108,3 +109,27 @@ wrappers = "wrappers"
 # The 4 warnings on `import "../gen/X"` lines are intentional (relative path
 # required so TON Verifier backend resolves the import — see comment above
 # each import). Acceptable cost.
+
+[contracts.JettonMinterV2]
+src = "contracts/v2/JettonMinter.tolk"
+depends = ["JettonWalletV2"]
+
+[contracts.BondingCurveV2]
+src = "contracts/v2/BondingCurve.tolk"
+depends = ["JettonWalletV2", "FeeCollectorV2"]
+
+[contracts.BondingCurveMasterV2]
+src = "contracts/v2/BondingCurveMaster.tolk"
+depends = ["BondingCurveV2", "JettonMinterV2"]
+
+[contracts.FeeSplitterV2]
+src = "contracts/v2/FeeSplitter.tolk"
+depends = ["JettonWalletV2"]
+
+[contracts.FeeCollectorV2]
+src = "contracts/v2/FeeCollector.tolk"
+depends = ["JettonWalletV2", "FeeSplitterV2"]
+
+[contracts.JettonWalletV2]
+src = "contracts/v2/JettonWallet.tolk"
+depends = []

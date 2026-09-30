@@ -52,6 +52,9 @@ jobs:
       - name: Reproducible market and creator claims
         run: acton run market-quick
 
+      - name: V2 presets and migration
+        run: acton run v2-simulation
+
       - name: Market simulation artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -20,8 +20,10 @@ LIBRARIES = {
 
 def fingerprint():
     files = [ROOT / "Acton.toml", Path(__file__), ROOT / "scripts/simulate-market.tolk"]
-    files += sorted((ROOT / "contracts").glob("*.tolk"))
+    files += sorted((ROOT / "contracts").rglob("*.tolk"))
     files += sorted((ROOT / "tests/simulation").glob("*.tolk"))
+    files += sorted((ROOT / "tests/v2").glob("*.tolk"))
+    files += [ROOT / "scripts/simulate-migration-v2.tolk"]
     files += [ROOT / "tests/test-utils.tolk", ROOT / "wrappers/utils.tolk"]
     files += sorted((ROOT / "wrappers").glob("*.gen.tolk"))
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
@@ -29,7 +31,7 @@ def fingerprint():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=["quick", "campaign", "replay"])
+    parser.add_argument("profile", choices=["quick", "campaign", "replay", "v2"])
     parser.add_argument("--seed", type=int, default=20260930)
     parser.add_argument("--operations", type=int)
     parser.add_argument("--actors", type=int)
@@ -39,7 +41,7 @@ def main():
     parser.add_argument("--output", type=Path, help="Artifact directory; must be inside this repository")
     args = parser.parse_args()
     count = args.seeds if args.seeds is not None else (20 if args.profile == "campaign" else 1)
-    operations = args.operations if args.operations is not None else (500 if args.profile == "campaign" else 200)
+    operations = args.operations if args.operations is not None else (10 if args.profile == "v2" else 500 if args.profile == "campaign" else 200)
     actors = args.actors if args.actors is not None else (50 if args.profile == "campaign" else 10)
     if not (1 <= count <= 100 and 1 <= operations <= 10000 and 4 <= actors <= 100
             and 0 <= args.seed < 2**32 - count):
@@ -87,7 +89,10 @@ def main():
         command = ["acton", "script"]
         if args.fork_block:
             command += ["--fork-net", "mainnet", "--fork-block-number", str(args.fork_block)]
-        command += ["scripts/simulate-market.tolk", str(seed), str(operations), str(actors)]
+        if args.profile == "v2":
+            command += ["scripts/simulate-migration-v2.tolk", str(operations)]
+        else:
+            command += ["scripts/simulate-market.tolk", str(seed), str(operations), str(actors)]
         log = output / f"seed-{seed}.log"
         snapshot = ROOT / "build/market-simulation" / f"failure-{seed}.json"
         snapshot.unlink(missing_ok=True)
@@ -97,7 +102,14 @@ def main():
                                     env={**os.environ, "NO_COLOR": "1"})
         contents = log.read_text()
         metrics = dict(re.findall(r"^METRIC (\w+) (\S+)$", contents, re.MULTILINE))
-        passed = result.returncode == 0 and "MARKET_PASS" in contents and "MARKET_FAIL" not in contents
+        marker = "V2_MATRIX_PASS scenarios=60 presets=15 wallets=10" if args.profile == "v2" else "MARKET_PASS"
+        passed = result.returncode == 0 and marker in contents and "MARKET_FAIL" not in contents
+        if args.profile == "v2":
+            cases = re.findall(r"^V2_PASS (.*)$", contents, re.MULTILINE)
+            metrics = {"scenarios": len(cases), "presets": 15, "migrations": len(cases), "cases": cases}
+            finalizations = re.findall(r"^FINALIZATION_PASS mode=(\d+)$", contents, re.MULTILINE)
+            metrics["finalization_checks"] = len(finalizations)
+            passed = passed and len(cases) == 60 and sorted(finalizations) == ["0", "1"]
         run = {"seed": seed, "passed": passed, "exit_code": result.returncode,
                "seconds": round(time.monotonic() - start, 3), "metrics": metrics,
                "log": str(log.relative_to(ROOT)), "command": command,
@@ -105,8 +117,12 @@ def main():
                "snapshot": str(snapshot.relative_to(ROOT)) if snapshot.exists() else None}
         manifest["runs"].append(run)
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-        print(f"seed={seed} {'PASS' if passed else 'FAIL'} tx={metrics.get('transactions', '?')} "
-              f"claims={metrics.get('claims', '?')}", flush=True)
+        if args.profile == "v2":
+            print(f"V2 {'PASS' if passed else 'FAIL'} scenarios={metrics['scenarios']} "
+                  f"finalization={metrics['finalization_checks']}", flush=True)
+        else:
+            print(f"seed={seed} {'PASS' if passed else 'FAIL'} tx={metrics.get('transactions', '?')} "
+                  f"claims={metrics.get('claims', '?')}", flush=True)
         if not passed:
             print("\n".join(contents.splitlines()[-35:]), file=sys.stderr)
             print(f"Replay: python3 scripts/run-market-simulation.py replay --seed {seed} "

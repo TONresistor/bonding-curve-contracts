@@ -5,7 +5,7 @@
 **TON token launchpad with a bonding curve and automatic migration to DeDust CPMM v2.**
 
 [![Version](https://img.shields.io/badge/version-v1.0.0-0098EA)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-120%2F120%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/tests-132%2F132%20passing-brightgreen)](./tests)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 </div>
@@ -55,7 +55,7 @@ Tokenomics are defined in [bonding-config.tolk](contracts/bonding-config.tolk). 
 
 ## Test
 
-**120/120 tests and 20/20 simulation seeds passed.** The market campaign used 50 traders per seed, with up to five message chains interleaved:
+**132/132 tests pass.** The V1 campaign passed all 20 simulation seeds. The market campaign used 50 traders per seed, with up to five message chains interleaved:
 
 - **10,000 buy/sell requests** and **60,461 transactions**.
 - **20 migrations** and **260 DeDust swaps**.
@@ -65,5 +65,15 @@ The tests checked balances, actual payouts, fees, slippage, unauthorized claims 
 
 These runs executed the contracts and real DeDust libraries in the Acton emulator. No real funds were spent. See [commands and replay instructions](docs/MARKET_SIMULATION.md).
 
+## V2
+
+Separate contracts in [contracts/v2](contracts/v2/): supply and creator-fee presets, dev buy before public trading, fee sharing and confirmed migration. V1's reference wallet is unchanged; V2 adds delivery confirmations.
+
+```sh
+acton test tests/v2
+acton run v2-simulation      # 60 preset scenarios and 2 finalization checks
+```
+
+The latest retained V2 run is a local simulation. Reports are saved in `build/market-simulation/`. No V2 deployment has been performed.
 
 [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
