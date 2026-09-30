@@ -36,6 +36,8 @@ The first market run downloads the DeDust libraries and verifies their hashes. R
 | [JettonMinter](contracts/JettonMinter.tolk) | Mints the initial supply, then drops its admin. |
 | [JettonWallet](contracts/JettonWallet.tolk) | Handles token transfers and burns. |
 
+The jetton wallet is an unmodified copy of [TON Core’s reference](https://github.com/ton-blockchain/acton-contracts/blob/d721c3179696b453a9490fcfd2f30770f8c234b4/jetton-v2.1/contracts/JettonWallet.tolk), using this project’s shared helpers. Its source pin and checksum are in [JettonWallet.upstream.json](contracts/JettonWallet.upstream.json).
+
 Migration deploys the pool, resolves its jetton wallet, then deposits TON and tokens. The initial LP position is fully locked.
 
 ## Parameters

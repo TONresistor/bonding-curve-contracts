@@ -7,18 +7,14 @@ import "sharding"
 import "storage"
 
 contract JettonWallet {
-    author: "Digital Resistance"
-    version: "1.0.0"
+    author: "The Tolk Team"
+    version: "2.1"
     description: "Standard Jetton Wallet. TEP-74 and TEP-89 compliant"
-    storage: WalletStorage
     incomingMessages: AllowedMessageToWallet
+    storage: WalletStorage
 }
 
-type AllowedMessageToWallet =
-    | AskToTransfer
-    | AskToBurn
-    | InternalTransferStep
-    | TopUpTons
+type AllowedMessageToWallet = AskToTransfer | AskToBurn | InternalTransferStep | TopUpTons
 
 type BounceOpToHandle = InternalTransferStep | BurnNotificationForMinter
 
@@ -27,8 +23,8 @@ fun onBouncedMessage(in: InMessageBounced) {
 
     val msg = lazy BounceOpToHandle.fromSlice(in.bouncedBody);
     val restoreAmount = match (msg) {
-        InternalTransferStep => msg.jettonAmount,
-        BurnNotificationForMinter => msg.jettonAmount,
+        InternalTransferStep => msg.jettonAmount,      // safe to fetch jettonAmount, because
+        BurnNotificationForMinter => msg.jettonAmount, // it's in the beginning of a message
     };
 
     var storage = lazy WalletStorage.load();
@@ -50,7 +46,7 @@ fun onInternalMessage(in: InMessage) {
                         storage.minterAddress,
                         contract.getCode(),
                     )
-                ) throw Errors.NotValidWallet;
+                ) throw ERROR_NOT_VALID_WALLET;
             }
             storage.jettonBalance += msg.jettonAmount;
             storage.save();
@@ -75,7 +71,7 @@ fun onInternalMessage(in: InMessage) {
             if (msg.sendExcessesTo != null) {
                 val toLeaveOnBalance = contract.getOriginalBalance() - in.valueCoins +
                     contract.getStorageDuePayment();
-                reserveToncoinsOnBalance(
+                reserveGramsOnBalance(
                     max(toLeaveOnBalance, calculateJettonWalletMinStorageFee()),
                     RESERVE_MODE_AT_MOST,
                 );
@@ -86,7 +82,7 @@ fun onInternalMessage(in: InMessage) {
                     value: 0,
                     body: ReturnExcessesBack { queryId: msg.queryId },
                 });
-
+                // SAFETY: mode SEND_MODE_CARRY_ALL_BALANCE is used after reserveGramsOnBalance()
                 excessesMsg.send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_IGNORE_ERRORS);
             }
         }
@@ -95,7 +91,7 @@ fun onInternalMessage(in: InMessage) {
             msg.forwardPayload.checkIsCorrectTlbEither();
             assert (
                 msg.transferRecipient.getWorkchain() == MY_WORKCHAIN
-            ) throw Errors.WrongWorkchain;
+            ) throw ERROR_WRONG_WORKCHAIN;
             checkAmountIsEnoughToTransfer(
                 in.valueCoins,
                 msg.forwardTonAmount,
@@ -103,8 +99,8 @@ fun onInternalMessage(in: InMessage) {
             );
 
             var storage = lazy WalletStorage.load();
-            assert (in.senderAddress == storage.ownerAddress) throw Errors.NotOwner;
-            assert (storage.jettonBalance >= msg.jettonAmount) throw Errors.BalanceError;
+            assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
+            assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
             storage.save();
 
@@ -134,8 +130,8 @@ fun onInternalMessage(in: InMessage) {
             checkAmountIsEnoughToBurn(in.valueCoins);
 
             var storage = lazy WalletStorage.load();
-            assert (in.senderAddress == storage.ownerAddress) throw Errors.NotOwner;
-            assert (storage.jettonBalance >= msg.jettonAmount) throw Errors.BalanceError;
+            assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
+            assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
             storage.save();
 
@@ -155,7 +151,9 @@ fun onInternalMessage(in: InMessage) {
             );
         }
 
-        TopUpTons => {}
+        TopUpTons => {
+            // just accept tons
+        }
 
         else => throw 0xFFFF,
     }

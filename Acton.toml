@@ -31,7 +31,8 @@ depends = ["JettonWallet"]
 
 [fmt]
 width = 100
-ignore = []
+# Keep the upstream wallet byte-for-byte identical to its pinned source.
+ignore = ["contracts/JettonWallet.tolk"]
 
 [scripts]
 deploy-emulation = "acton script scripts/deploy.tolk"

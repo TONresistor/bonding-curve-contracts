@@ -144,6 +144,12 @@ fun onInternalMessage(in: InMessage) {
                 value: CURVE_TRANSFER_VALUE,
                 body: transferBody,
             });
+            // Reject underfunded delivery; reserve updates roll back on failure.
+            checkAmountIsEnoughToTransfer(
+                CURVE_TRANSFER_VALUE,
+                CURVE_TRANSFER_NOTIFICATION,
+                outBuyMsg.estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY),
+            );
             outBuyMsg.send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
 
             val buyEventMsg = createExternalLogMessage({
