@@ -8,7 +8,7 @@ For a higher-level overview of the architecture, start with [`README.md`](./READ
 
 ## Requirements
 
-- [Acton CLI](https://ton-blockchain.github.io/acton/) (installs Tolk compiler + emulator + test framework + script runner)
+- [Acton CLI](https://ton-blockchain.github.io/acton/) 1.2.0 (`acton up 1.2.0`; installs Tolk compiler + emulator + test framework + script runner)
 - TON mainnet RPC access (for `--fork-net mainnet` tests):
   - Free [TonCenter API key](https://t.me/tonapibot) is sufficient
   - Set in `.env`: `TONCENTER_MAINNET_API_KEY=...`
@@ -50,10 +50,15 @@ acton test --fork-net mainnet
 
 ### Live mainnet testing
 
-The fork-mainnet emulator **cannot fully execute** the DeDust v2 pool's library cell code (the pool's `Init` handler with its minter handshake doesn't run end-to-end). Therefore:
+The existing sandbox and fork-mainnet tests do not register the DeDust libraries;
+their graduation checks validate outbound messages or inject a pool callback.
+For a complete emulated migration, run `acton run simulate-migration`. This loads
+the real Pool, Deposit, and Position libraries and verifies the actual handshake,
+pool reserves, token supply conservation, and fully locked LP position.
 
-- Sandbox + fork-mainnet tests validate **the curve's outbound message construction**, but **not the pool's response**.
-- For changes that touch the Graduate flow or DeDust integration, **live mainnet validation is required**: deploy a scaled mini-master (e.g. `V=2, T=8`) under a test wallet, execute a real graduation, verify the pool is seeded.
+For changes that touch the Graduate flow or DeDust integration, **live mainnet
+validation is still required**: deploy a scaled mini-master (e.g. `V=2, T=8`)
+under a test wallet, execute a real graduation, and verify the pool is seeded.
 
 Two scripts to help:
 

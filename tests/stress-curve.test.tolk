@@ -190,8 +190,8 @@ get fun `test STRESS sequence: 30 alternating trades, k+fee monotone non-decreas
     while (i < 30) {
         val before = curve.getCurveData();
         val invariantBefore = (before.virtualTonReserve + before.realTonReserve) *
-        before.curveJettonBalance +
-        before.feeAccrued;
+            before.curveJettonBalance +
+            before.feeAccrued;
 
         if (i % 2 == 0) {
             val buyBody: BuyJettons = { queryId: i as uint64, minJettonsOut: 0 };
@@ -227,8 +227,8 @@ get fun `test STRESS sequence: 30 alternating trades, k+fee monotone non-decreas
 
         val after = curve.getCurveData();
         val invariantAfter = (after.virtualTonReserve + after.realTonReserve) *
-        after.curveJettonBalance +
-        after.feeAccrued;
+            after.curveJettonBalance +
+            after.feeAccrued;
 
         expect(invariantAfter + after.curveJettonBalance * 2 >= invariantBefore).toEqual(true);
         i += 1;

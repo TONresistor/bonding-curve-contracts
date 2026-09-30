@@ -30,9 +30,22 @@ acton build
 acton test                          # 119 / 119 sandbox tests
 acton test --fork-net mainnet       # against real DeDust state
 acton run demo-full-flow            # end-to-end demo
+acton run simulate-migration        # create, buy, sell, graduate, verify pool reserves and locked LP
+acton run market-quick              # 10 traders, interleaved trades, migration and repeated claims
+acton run market-campaign           # 20 seeds, 50 traders, 10,000 randomized trade requests
 ```
 
-Requires [Acton CLI](https://ton-blockchain.github.io/acton/).
+Requires [Acton CLI](https://ton-blockchain.github.io/acton/) 1.2.0 (`acton up 1.2.0`).
+
+`simulate-migration` reads the real DeDust Pool, Deposit, and Position libraries from mainnet
+and registers them in the emulator. It uses simulated wallets, rejects broadcasting, and
+asserts the final pool reserves, token supply conservation, and 100% locked liquidity.
+It spends no real funds and does not replace live mainnet validation.
+
+See [reproducible market simulations](docs/MARKET_SIMULATION.md) for replay commands,
+accounting checks, creator claims, and observed discrepancies. In particular, the pinned
+DeDust implementation pays a creator share of the base fee; the 1%-of-swap creator revenue
+described below is not what this configuration produces in simulation.
 
 ## Architecture
 

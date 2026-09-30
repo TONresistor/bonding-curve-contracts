@@ -5,7 +5,7 @@ version = "1.0.0"
 license = "MIT"
 
 [toolchain]
-acton = "1.0.0"
+acton = "1.2.0"
 
 [contracts.JettonMinter]
 display-name = "JettonMinter"
@@ -85,6 +85,12 @@ preflight-mainnet = "acton script scripts/preflight-mainnet.tolk --fork-net main
 # Sandbox demos (zero TON, ~30s each).
 demo-full-flow = "acton script scripts/demo-full-flow.tolk"
 demo-graduation-reachable = "acton script scripts/demo-graduation-reachable.tolk"
+
+# Full migration with real DeDust libraries, emulated locally against mainnet reads.
+simulate-migration = "acton script scripts/simulate-migration.tolk --fork-net mainnet"
+market-quick = "python3 scripts/run-market-simulation.py quick"
+market-campaign = "python3 scripts/run-market-simulation.py campaign"
+market-replay = "python3 scripts/run-market-simulation.py replay"
 
 [import-mappings]
 acton = ".acton"

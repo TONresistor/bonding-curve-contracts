@@ -1,6 +1,7 @@
 # Build artifacts (regenerable via `acton build`)
 build/cache/
 build/mutation-sessions/
+build/market-simulation/
 build/abi/
 build/*.json
 !build/gas-baseline.json

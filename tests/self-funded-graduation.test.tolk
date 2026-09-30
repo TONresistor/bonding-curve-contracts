@@ -1,7 +1,9 @@
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
 import "@acton/testing/expect"
+import "@acton/types/message"
 import "@contracts/bonding-config"
+import "@contracts/bonding-dedust"
 import "@contracts/bonding-messages"
 import "@contracts/bonding-storage"
 import "@wrappers/BondingCurve.gen"
@@ -231,9 +233,38 @@ get fun `test self-funded: Phase A bounce-recovers via FROZEN`() {
 
     expect(afterBounce.realTonReserve >= GRADUATION_THRESHOLD_TON).toEqual(true);
 
-    curve.sendGraduate(anyKeeper.address, 99, { value: ton("0.05"), bounce: true });
+    // Acton 1.2 can resolve the pool library on retry. Inject the failed Init
+    // explicitly so this checks bounce recovery, independent of RPC/library availability.
+    val retry = testing.processSingleTraceStep(
+        anyKeeper.address,
+        createMessage({
+            bounce: true,
+            value: ton("0.05"),
+            dest: curve.address,
+            body: Graduate { queryId: 99 },
+        }),
+    );
+    expect(curve.getCurveData().state).toEqual(CURVE_STATE_GRADUATING);
+    val init = retry.outMessages.at<DedustInit>(1).loadBody();
+    val pool = calcDeployedCpmmV2Pool(
+        afterBounce.jettonMinter!,
+        creator.address,
+    ).calculateAddress();
+    testing.processSingleTraceStep(
+        pool,
+        createMessage({
+            bounce: false,
+            value: ton("0.29"),
+            dest: curve.address,
+            body: beginCell()
+                .storeUint(0xffffffff, 32)
+                .storeSlice(init.toCell().beginParse())
+                .endCell(),
+        }).bounced(),
+    );
     val afterRetry = curve.getCurveData();
     expect(afterRetry.state).toEqual(CURVE_STATE_FROZEN);
+    expect(afterRetry.realTonReserve).toEqual(afterBounce.realTonReserve);
     expect(afterRetry.migrationReserve).toEqual(MIGRATION_RESERVE_TARGET);
 }
 

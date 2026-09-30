@@ -240,7 +240,7 @@ fun onInternalMessage(in: InMessage) {
                         CURVE_TRANSFER_NOTIFICATION,
                         in.originalForwardFee,
                     ) +
-                    REFUND_VALUE_EPSILON;
+                        REFUND_VALUE_EPSILON;
                     val refundMsg = createMessage({
                         bounce: BounceMode.Only256BitsOfBody,
                         dest: ourWalletFrozen,
@@ -333,7 +333,7 @@ fun onInternalMessage(in: InMessage) {
                         CURVE_TRANSFER_NOTIFICATION,
                         in.originalForwardFee,
                     ) +
-                    REFUND_VALUE_EPSILON;
+                        REFUND_VALUE_EPSILON;
                     val refundMsg = createMessage({
                         bounce: BounceMode.Only256BitsOfBody,
                         dest: ourWallet,
@@ -396,7 +396,7 @@ fun onInternalMessage(in: InMessage) {
                     CURVE_TRANSFER_NOTIFICATION,
                     in.originalForwardFee,
                 ) +
-                REFUND_VALUE_EPSILON;
+                    REFUND_VALUE_EPSILON;
                 val refundMsg = createMessage({
                     bounce: BounceMode.Only256BitsOfBody,
                     dest: ourWallet,
