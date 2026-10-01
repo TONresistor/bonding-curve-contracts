@@ -5,6 +5,12 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
 
+## [Unreleased]
+
+- V2: dev buy, supply/fee presets, configurable curves and optional buy limits.
+- Shared curve/DeDust fee manager with up to 8 fixed beneficiaries.
+- Confirmed migration, recovery flows, 143 tests and 540 migration simulations.
+
 ## [1.0.0] (2026-05-19)
 
 Initial public release.
