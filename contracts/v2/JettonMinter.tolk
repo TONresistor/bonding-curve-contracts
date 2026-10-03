@@ -1,5 +1,6 @@
 import "@gen/JettonWalletV2.code"
 import "bonding-messages"
+import "wallet-messages"
 import "../v1/errors"
 import "../v1/fees-management"
 import "../v1/jetton-utils"
@@ -17,7 +18,9 @@ contract JettonMinterV2 {
 
 type AllowedMessageToMinter =
     | MintNewJettons
+    | MintCurveWallet
     | BurnNotificationForMinter
+    | BurnNotificationTracked
     | RequestWalletAddress
     | ChangeMinterAdmin
     | ClaimMinterAdmin
@@ -25,26 +28,26 @@ type AllowedMessageToMinter =
     | ChangeMinterMetadata
     | TopUpTons
 
-type BounceableMinterOps = InternalTransferStep
+type BounceableMinterOps = InternalTransferStep | InternalCurveMint
 
 fun onBouncedMessage(in: InMessageBounced) {
     in.bouncedBody.skipBouncedPrefix();
     val parsed = lazy BounceableMinterOps.fromSlice(in.bouncedBody);
 
-    match (parsed) {
-        InternalTransferStep => {
-            var storage = lazy MinterStorage.load();
-            storage.totalSupply -= parsed.jettonAmount;
-            storage.save();
-            if (storage.adminAddress != null) {
-                createMessage({
-                    bounce: false,
-                    dest: storage.adminAddress!,
-                    value: 0,
-                    body: LaunchMintFailed { queryId: parsed.queryId },
-                }).send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE);
-            }
-        }
+    val (id, amount) = match (parsed) {
+        InternalTransferStep => (parsed.queryId, parsed.jettonAmount),
+        InternalCurveMint => (parsed.queryId, parsed.jettonAmount),
+    };
+    var storage = lazy MinterStorage.load();
+    storage.totalSupply -= amount;
+    storage.save();
+    if (storage.adminAddress != null) {
+        createMessage({
+            bounce: false,
+            dest: storage.adminAddress!,
+            value: 0,
+            body: LaunchMintFailed { queryId: id },
+        }).send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE);
     }
 }
 
@@ -56,6 +59,28 @@ fun onInternalMessage(in: InMessage) {
     val msg = lazy AllowedMessageToMinter.fromSlice(in.body);
 
     match (msg) {
+        BurnNotificationTracked => {
+            var storage = MinterStorage.load();
+            assert (
+                in.senderAddress ==
+                calcAddressOfJettonWallet(
+                    msg.burnInitiator,
+                    contract.getAddress(),
+                    jettonWalletV2CompiledCode(),
+                )
+            ) throw Errors.NotValidWallet;
+            assert (
+                msg.jettonAmount > 0 && storage.totalSupply >= msg.jettonAmount
+            ) throw Errors.BalanceError;
+            storage.totalSupply -= msg.jettonAmount;
+            storage.save();
+            createMessage({ bounce: false, dest: msg.burnInitiator, value: 0, body: BurnDelivered {
+                    queryId: msg.queryId,
+                    amount: msg.jettonAmount,
+                } }).send(
+                SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
+        }
         BurnNotificationForMinter => {
             var storage = lazy MinterStorage.load();
             val jettonWalletCode = jettonWalletV2CompiledCode();
@@ -111,6 +136,30 @@ fun onInternalMessage(in: InMessage) {
             respondMsg.send(
                 SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
             );
+        }
+
+        MintCurveWallet => {
+            var storage = lazy MinterStorage.load();
+            assertSenderIsAdmin(in.senderAddress, storage.adminAddress);
+            assert (in.senderAddress.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
+            assert (msg.jettonAmount > 0 && msg.queryId == 1) throw Errors.InvalidMessage;
+            checkAmountIsEnoughToTransfer(msg.tonAmount, ton("0.05"), in.originalForwardFee);
+            storage.totalSupply += msg.jettonAmount;
+            storage.save();
+            reserveToncoinsOnBalance(ton("0.01"), RESERVE_MODE_EXACT_AMOUNT);
+            createMessage({
+                bounce: BounceMode.Only256BitsOfBody,
+                dest: calcDeployedJettonWallet(
+                    in.senderAddress,
+                    contract.getAddress(),
+                    jettonWalletV2CompiledCode(),
+                ),
+                value: msg.tonAmount,
+                body: InternalCurveMint {
+                    queryId: msg.queryId,
+                    jettonAmount: msg.jettonAmount,
+                },
+            }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
         }
 
         MintNewJettons => {

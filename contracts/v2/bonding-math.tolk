@@ -75,11 +75,21 @@ fun validateLaunchOptions(o: LaunchOptions) {
         o.graduationThreshold == ton("3000")
     ) throw 49;
     assert (o.reserveRatio == 3 || o.reserveRatio == 5 || o.reserveRatio == 8) throw 49;
-    assert (o.maxBuy == 0 || o.minBuy <= o.maxBuy) throw 49;
-    assert (o.maxBuy == 0 || o.maxBuy >= ton("0.01")) throw 49;
-    val headroom = initialVirtualReserve(o) * 9 - o.graduationThreshold;
-    assert (o.minBuy <= headroom) throw 49;
+    assert (o.minBuyBps <= BPS_DENOMINATOR && o.maxBuyBps <= BPS_DENOMINATOR) throw 49;
+    assert (o.maxBuyBps == 0 || o.minBuyBps < o.maxBuyBps) throw 49;
+    val virtual = initialVirtualReserve(o);
+    val remainingAtGraduation = virtual * o.supply / (virtual + o.graduationThreshold);
+    val (minTokens, _) = buyTokenLimits(o);
+    assert (minTokens <= remainingAtGraduation - o.supply / 10) throw 49;
+    assert (!o.buybackBurn || (o.beneficiaries == null && o.creatorFeeBps > 0)) throw 49;
     validateBeneficiaries(o.beneficiaries);
+}
+
+fun buyTokenLimits(o: LaunchOptions): (coins, coins) {
+    return (
+        (o.supply * o.minBuyBps + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR,
+        o.supply * o.maxBuyBps / BPS_DENOMINATOR,
+    );
 }
 
 fun initialVirtualReserve(o: LaunchOptions): coins {
@@ -93,7 +103,10 @@ fun previewLaunch(o: LaunchOptions): LaunchPreview {
     val remaining = virtual * o.supply / x;
     val poolTon = o.graduationThreshold - MIGRATION_FEE;
     val poolTokens = poolTon * remaining / x;
+    val (minBuyTokens, maxBuyTokens) = buyTokenLimits(o);
     return {
+        minBuyTokens,
+        maxBuyTokens,
         virtualTonReserve: virtual,
         graduationThreshold: o.graduationThreshold,
         soldTokens: o.supply - remaining,

@@ -61,7 +61,9 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 msg.protocol ? recipient == r.protocol : beneficiaryShares(r).exists(recipient)
             ) throw 73;
-            assert (in.valueCoins >= ton("0.2")) throw 48;
+            assert (
+                in.valueCoins >= (r.buybackBurn && !msg.protocol ? ton("0.4") : ton("0.2"))
+            ) throw 48;
             val balance = feeBalance(s, recipient);
             val native = msg.protocol ? s.protocolTon : balance.tonAmount;
             val tokens = msg.protocol ? s.protocolTokens : balance.tokenAmount;
@@ -79,6 +81,8 @@ fun onInternalMessage(in: InMessage) {
                     } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
             }
             if (tokens > 0) {
+                val tokenGas = r.buybackBurn && !msg.protocol ? ton("0.35") : ton("0.1");
+                val notifyGas: coins = r.buybackBurn && !msg.protocol ? ton("0.2") : 0;
                 val id = s.nextId;
                 s.nextId += 1;
                 s
@@ -91,18 +95,18 @@ fun onInternalMessage(in: InMessage) {
                             recipient,
                         },
                     );
-                val out = createMessage({ bounce: true, dest: wallet, value: ton("0.1"), body: AskToTransferTracked {
+                val out = createMessage({ bounce: true, dest: wallet, value: tokenGas, body: AskToTransferTracked {
                         queryId: id,
                         jettonAmount: tokens,
                         transferRecipient: recipient,
                         sendExcessesTo: contract.getAddress(),
                         customPayload: null,
-                        forwardTonAmount: 0,
+                        forwardTonAmount: notifyGas,
                         forwardPayload: beginCell().storeUint(0, 1).toSlice(),
                     } });
                 checkAmountIsEnoughToTransfer(
-                    ton("0.1"),
-                    0,
+                    tokenGas,
+                    notifyGas,
                     out.estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY),
                 );
                 out.send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);

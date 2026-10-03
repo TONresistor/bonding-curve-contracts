@@ -547,6 +547,77 @@ fun v2MigrationScenario(
     );
 }
 
+fun simulatePercentageLimits(supply: coins, threshold: coins, ratio: uint8) {
+    val owner = testing.treasury("limited-migration-owner").address;
+    val buyer = testing.treasury("limited-migration-buyer").address;
+    val master = BondingCurveMasterV2.fromStorage({ admin: owner, nextAdmin: null, treasury: owner, totalLaunches: 0, feesBalance: 0 });
+    master.deploy(owner, { value: ton("2") });
+    val beforeFees = master.getMasterData().feesBalance;
+    val virtual = threshold / ratio;
+    val remaining = virtual * supply / (virtual + threshold);
+    val minimum = (remaining - supply / 10) * 10000 / supply;
+    val options = LaunchOptions {
+        supply,
+        creatorFeeBps: 100,
+        devBuyAmount: ton("100"),
+        minDevTokens: 0,
+        graduationThreshold: threshold,
+        reserveRatio: ratio,
+        minBuyBps: minimum,
+        maxBuyBps: minimum + 1,
+    };
+    master.sendCreateLaunch(
+        owner,
+        1,
+        beginCell().endCell(),
+        9500 + ratio,
+        options,
+        { value: ton("101") },
+    );
+    val curve = BondingCurveV2.fromAddress(master.getLaunchAddress(owner, 9500 + ratio, options));
+    val minter = JettonMinterV2.fromAddress(curve.getCurveData().jettonMinter!);
+    val minTokens = supply * minimum / 10000;
+    val maxTokens = supply * (minimum + 1) / 10000;
+    var bought: coins = 0;
+    var count = 0;
+    while (curve.getState() == CURVE_STATE_TRADING) {
+        assert (count < 100) throw 1000;
+        val data = curve.getCurveData();
+        val denominator = data.curveJettonBalance - minTokens;
+        val net = ((data.virtualTonReserve + data.realTonReserve) * minTokens + denominator - 1) /
+            denominator;
+        val gross = (net * 10000 + 9799) / 9800;
+        val quote = curve.getQuoteBuy(gross);
+        expect(quote >= minTokens && quote <= maxTokens).toEqual(true);
+        expect(
+            curve.sendBuyJettons(
+                buyer,
+                10 + count,
+                quote,
+                { value: gross + ton("0.05"), bounce: true },
+            ),
+        ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+        bought += quote;
+        expect(v2Tokens(minter, buyer)).toEqual(bought);
+        count += 1;
+    }
+    expect(curve.getState()).toEqual(CURVE_STATE_MIGRATED);
+    expect(master.getMasterData().feesBalance).toEqual(beforeFees + ton("20.2"));
+    val pool = curve.getPoolAddress();
+    val liquidity = net.runGetMethod<SimulationPoolData>(pool, "get_pool_data");
+    val position = net.runGetMethod<address>(pool, "get_position_address", [curve.address]);
+    expect(
+        net.runGetMethod<SimulationPositionData>(position, "get_position_data").lockedLiquidity,
+    ).toEqual(liquidity.liquidity);
+    println(
+        "V2_LIMITS_PASS ratio={} min_bps={} max_bps={} buys={}",
+        ratio,
+        minimum,
+        minimum + 1,
+        count,
+    );
+}
+
 fun runV2Matrix(rounds: int = 10) {
     assert (!net.isBroadcasting()) throw 1000;
     testing.setNow(V2_TIME);
@@ -587,6 +658,9 @@ fun runV2Matrix(rounds: int = 10) {
         }
         a += 1;
     }
+    simulatePercentageLimits(supplies.get(0), ton("1000"), 3);
+    simulatePercentageLimits(supplies.get(1), ton("2000"), 5);
+    simulatePercentageLimits(supplies.get(2), ton("3000"), 8);
     simulateFinalization(0);
     simulateFinalization(1);
     println("V2_MATRIX_PASS scenarios=540 presets=135 wallets=10");

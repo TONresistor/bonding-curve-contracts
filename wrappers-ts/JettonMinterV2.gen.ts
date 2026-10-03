@@ -207,6 +207,184 @@ export const LaunchMintFailed = {
 }
 
 /**
+ > struct (0xa0a0b055) MintCurveWallet {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ >     tonAmount: coins
+ > }
+ */
+export interface MintCurveWallet {
+    readonly $: 'MintCurveWallet'
+    queryId: uint64
+    jettonAmount: coins
+    tonAmount: coins
+}
+
+export const MintCurveWallet = {
+    PREFIX: 0xa0a0b055,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+        tonAmount: coins
+    }): MintCurveWallet {
+        return {
+            $: 'MintCurveWallet',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): MintCurveWallet {
+        loadAndCheckPrefix32(s, 0xa0a0b055, 'MintCurveWallet');
+        return {
+            $: 'MintCurveWallet',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+            tonAmount: s.loadCoins(),
+        }
+    },
+    store(self: MintCurveWallet, b: c.Builder): void {
+        b.storeUint(0xa0a0b055, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+        b.storeCoins(self.tonAmount);
+    },
+    toCell(self: MintCurveWallet): c.Cell {
+        return makeCellFrom<MintCurveWallet>(self, MintCurveWallet.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b056) InternalCurveMint {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ > }
+ */
+export interface InternalCurveMint {
+    readonly $: 'InternalCurveMint'
+    queryId: uint64
+    jettonAmount: coins
+}
+
+export const InternalCurveMint = {
+    PREFIX: 0xa0a0b056,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+    }): InternalCurveMint {
+        return {
+            $: 'InternalCurveMint',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): InternalCurveMint {
+        loadAndCheckPrefix32(s, 0xa0a0b056, 'InternalCurveMint');
+        return {
+            $: 'InternalCurveMint',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+        }
+    },
+    store(self: InternalCurveMint, b: c.Builder): void {
+        b.storeUint(0xa0a0b056, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+    },
+    toCell(self: InternalCurveMint): c.Cell {
+        return makeCellFrom<InternalCurveMint>(self, InternalCurveMint.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b058) BurnNotificationTracked {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ >     burnInitiator: address
+ > }
+ */
+export interface BurnNotificationTracked {
+    readonly $: 'BurnNotificationTracked'
+    queryId: uint64
+    jettonAmount: coins
+    burnInitiator: c.Address
+}
+
+export const BurnNotificationTracked = {
+    PREFIX: 0xa0a0b058,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+        burnInitiator: c.Address
+    }): BurnNotificationTracked {
+        return {
+            $: 'BurnNotificationTracked',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): BurnNotificationTracked {
+        loadAndCheckPrefix32(s, 0xa0a0b058, 'BurnNotificationTracked');
+        return {
+            $: 'BurnNotificationTracked',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+            burnInitiator: s.loadAddress(),
+        }
+    },
+    store(self: BurnNotificationTracked, b: c.Builder): void {
+        b.storeUint(0xa0a0b058, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+        b.storeAddress(self.burnInitiator);
+    },
+    toCell(self: BurnNotificationTracked): c.Cell {
+        return makeCellFrom<BurnNotificationTracked>(self, BurnNotificationTracked.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b059) BurnDelivered {
+ >     queryId: uint64
+ >     amount: coins
+ > }
+ */
+export interface BurnDelivered {
+    readonly $: 'BurnDelivered'
+    queryId: uint64
+    amount: coins
+}
+
+export const BurnDelivered = {
+    PREFIX: 0xa0a0b059,
+
+    create(args: {
+        queryId: uint64
+        amount: coins
+    }): BurnDelivered {
+        return {
+            $: 'BurnDelivered',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): BurnDelivered {
+        loadAndCheckPrefix32(s, 0xa0a0b059, 'BurnDelivered');
+        return {
+            $: 'BurnDelivered',
+            queryId: s.loadUintBig(64),
+            amount: s.loadCoins(),
+        }
+    },
+    store(self: BurnDelivered, b: c.Builder): void {
+        b.storeUint(0xa0a0b059, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.amount);
+    },
+    toCell(self: BurnDelivered): c.Cell {
+        return makeCellFrom<BurnDelivered>(self, BurnDelivered.store);
+    }
+}
+
+/**
  > type ForwardPayloadRemainder = RemainingBitsAndRefs
  */
 export type ForwardPayloadRemainder = RemainingBitsAndRefs
@@ -980,10 +1158,12 @@ function calculateDeployedAddress(code: c.Cell, data: c.Cell, options: DeployedA
 }
 
 export class JettonMinterV2 implements c.Contract {
-    static CodeCell = c.Cell.fromBase64('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');
+    static CodeCell = c.Cell.fromBase64('te6ccgECLAEACygAART/APSkE/S88sgLAQIBYgIDBPTQ+JGOUtMfMdcsILxqKMyV0z/6ADCOENcsJQUFgrSS8j/h0z/6ADDi7UTQ+gAg+lAwUCOhyAH6As7J7VQgbpFb4MjPhQj6UoIQoKCwMM8Ljss/yYBA+wDg1ywlBQWCxOMC1ywj3uy+9OMC1ywhY7XLnOMC1ywlBQWCrAQFBgcCASAPEAL87UTQ+gD6UPpQ1NEE0z/6APpIMPiS+CiII8jPhCD6UhL6Usl4JFQSMsjPg8sEz4WgzMz5FoT3sBKAC1AD1yTIz4oAQM7L989QxwXy4EohwgCVU1G+wwCRcOLyr1FRocgB+gIU+lQS+lQUzMntVMjPhQgS+lKCEKCgsFnPC44SEwgB3u1E0IgC0z/6APpI+lAw+JL4KCPIz4Qg+lL6Usl4UYjIz4PLBM+FoMzM+RaE97ATgAtQCNckyM+KAEDOFsv3z1DHBfLgSgL6AAOhyAH6AhLOye1UIW6RW+DIz4UIEvpSghDVMnbbzwuOyz/JgEL7ABMB1NM/+kjXCgCVIMj6UsmRbeJtIvpEMJEyjrMwiPgoI8jPhCD6UvpSyXhRIsjPg8sEz4WgzMz5FoT3sBOAC1AE1yTIz4oAQM4Sy/fPUAHi+JLIz4UI+lKCENFzVADPC44Tyz/6VPQAyYBQ+wATBPDjAtcsIyFb6DzjAtcsIygPmqSOJu1E0PoA+lD6UDH4kiLHBfLgSQPTPzH6SDDIUAP6AvpU+lTOye1U4NcsJ9xHCMyOIzDtRND6APpQMfpQ+JIixwXy4EltyFAE+gIS+lQS+lTOye1U4NcsI6GPkQzjAtcsJlwxSBQJCgsMABTLPwH6AsmAUPsAAf7tRND6ACD6UDD4kscF8uBJ+JL6RDDy0U0C0z/6APoAMCHCAJUiwAHDAJFw4vKxggr68ID4k3D4OnL4OSBugRi3IuMEIW6BHRNYA+MEUCOoE6BzgQMscPg8oAJw+DYSoAFw+Dagc4EEAoIQCWYBgHD4N6AhufKwUTGgyAH6AhTODQH47UTQ+gAg+lAw+JLHBfLgSQLTPzH6SPoA10wi+kQw8tFNINDXLCC8aijM8uBI0z8x+gD6UDH6UDH6APQEAW6RMJHR4viTcPg6IXJx4wT4OSBugRi3IuMEIW6BHRNYA+MEUCOoE6BzgQMscPg8oAJw+DYSoAFw+Dagc4EEAg4ARjDtRND6APpQ+lAx+JJYxwXy4EltbchQBPoC+lQS+lTOye1UAGaOI+1E0PoA+lD6UDD4kiLHBfLgSQPXTMhQA/oC+lQS+lTMye1U4NcsJpuQrGQx3IQP8vABuMntVIIImJaAcPsC+JL4KIgiyM+EIPpSEvpSyXjIz4mIAVRyMcjPg8sEz4WgzMz5FoT3sAWACyPXJDLOE8v3UAT6AoEVDM8LdRPMEszPkoKCwVrLPwH6AsmAEfsAEwHKghAJZgGAcPg3oCO58rAUoMgB+gIUzsntVIIImJaAcPsCiPgoIsjPhCD6UvpSyXjIz4mIAVRyMcjPg8sEz4WgzMz5FoT3sAWACyPXJDLOE8v3UAT6AoEVDc8LdRPMEszMyYAR+wATAB29mt9qJofQAY/SgY/SgYQCAnEREgFlrbzEfBQRZGfCEH0pfSlkvCiRZGfB5YJnwtBmZnyLQnvYCUAFqAHrkmRnxQAgZ2X756hAEwElrxb2omhEAP0AfShrphC3WYGCQBMBFP8A9KQT9LzyyAsUAgFiFRYCAs8XGAIBSCorA/c+JGPd9MfMXBwcAPXLCC8aijMltM/MfoAMI4+1ywlBQWCpJhsItM/+gAwf44p1ywj3uy+9JbTPzH6ADCOFjFsEtcsJQUFgsSS8j/h0z/6ADASfwHiQwPiQDPi7UTQ+gAg+kj6SDBRNKDIAfoCEs7J7VQDkTDjDQLjAl8DgGRobAvc7UTQ+gD6SPpIU9HHBY45+CpTosjPhCAS+lL6Usl4LFQSMsjPg8sEz4WgzMz5FoT3sBKAC1AD1yTIz4oAQM7L989QLscF8uBK3wSbM1OyxwXy4EqLDAPeI8cAs5gj1wsAwwDDAJFw4pdTwMcFs8MAkXDi4wBRKaDIAfoCgJicASPiSxwXy4ErIz4UIUiD6UoIQoKCwWs8LjiTPCz8h+gLJgED7AAA0yM+FCPpSghCgoLBSzwuOEss/AfoCyYBA+wAD/uDXLCUFBYK0jkTtRND6ADH6SPpI+JJYxwXy4EogxwCzl9cLAMMAwwCSMHDi8tBIAdM/+gAw+JL4l4IK+vCAiwQmEEcQNhA1EDRZcH/wAeDXLCC8aijMjhTTP/oA+lD6UPoA+JL4l1VRcHDwAeDXLCUFBYKk4wLXLCB8U/Us4wIcHR4AKNM/+gD6UPpQ+gD4kviXVVF/cPABAf7TP/oA+kj6UPQB+gAg9AQBbpEwkdHiI/pEMPLRTfiX+JNw+DojcnHjBPg5IG6BGLci4wQhboEdE1gD4wRQI6gloHOBAyxw+DygAXD4NqABcPg2oHOBBAKCEAlmAYBw+DegvPKw7UTQ+gAg+kj6SDD4kiLHBfLgSVM4vvKvUTihHwQqidcn4wLXLCUFBYK84wLXLCLK+D3kICEiIwDAyAH6AhLOye1U+ComyM+EIPpSE/pSyXjIz5BeNRRmGss/UAj6AvpUFPpUWPoCzsnIz4mIAVR0JcjPg8sEz4WgzMz5FoT3sASACyfXJDYVzhLL94EVDc8LeczMzMmAUPsAAAigoLBTAf7TP/oA+kj6UPQB+gAg9AQBbpEwkdHiI/pEMPLRTfiXIoIImJaAoPiTcPg6IXJx4wT4OSBugRi3IuMEIW6BHRNYA+MEUCOoE6BzgQMscPg8oAJw+DYSoAFw+Dagc4EEAoIQCWYBgHD4N6C88rDtRND6ACD6SPpIMPiSIscF8uBJJADu+Jf4OSBugRCeWOMEcYEC8nD4OAFw+DaggQ/ncPg2oLzysO1E0PoA+kj6SPiSI8cF8uBJBNM/+gAwIMIAlVNAvsMAkXDi8q9RRKHIAfoCUjD6UlIg+lIVzsntVMjPhYj6UoIQoKCwWM8LjhPLPwH6AvpSyYBQ+wAB/I5w+Jf4OSBugRCeWOMEcYEC8nD4OAFw+DaggQ/ncPg2oLzysO1E0PoAIPpI+kgw+JIixwXy4EkE0z/6APpQMFNRvvKvUVGhyAH6AhTOye1UyM+R73Zfess/WPoC+lL6VMnIz4WIEvpScc8LbszJgFD7AODXLCabkKxkMdyEDyUA0FM4vvKvUTihyAH6AhLOye1U+ComyM+EIPpSE/pSyXjIz5KCgsFSGss/UAj6AvpUFPpUWPoCzsnIz4mIAVR0JcjPg8sEz4WgzMz5FoT3sASACyfXJDYVzhLL94EVDc8LeczMzMmAUPsAAATy8AAUJoIQC+vCAL7ysAL8UhD6UlIg+lITzsntVCSOK8jPkc2LQnIpzws/KPoCUnD6VBTOycjPhQgS+lJQBPoCcc8LahPMyYAR+wCUECRsMeIhkzA2f5UXxwXDAOKVIW6zwwCRcOKVIsIAwwCRcOKSNVvjDSJukl8D4PgnbxBYofgvoHOBBAKCEAlmAYBwKCkAnAWOJIIImJaAyM+FCBL6UgH6AoIQoKCwUc8LiiLPCz8B+gLJgBH7AI4kggiYloDIz4UIEvpSAfoCghCgoLBQzwuKIs8LPwH6AsmAEfsA4gA++De2CXL7AsjPhQgS+lKCENUydtvPC47LP8mBAIL7AABPuASe1E0PoAMfpIMfpIMSDHALOX1wsAwwDDAJIwcOKCEAvrwgBw4wSAAdu7Au1E0PoA+kj6SDD4Ko');
 
     static Errors = {
+        'Errors.BalanceError': 47,
         'Errors.NotEnoughGas': 48,
+        'Errors.InvalidMessage': 49,
         'Errors.InvalidOp': 72,
         'Errors.NotOwner': 73,
         'Errors.NotValidWallet': 74,
@@ -1025,6 +1205,14 @@ export class JettonMinterV2 implements c.Contract {
         return MintNewJettons.toCell(MintNewJettons.create(body));
     }
 
+    static createCellOfMintCurveWallet(body: {
+        queryId: uint64
+        jettonAmount: coins
+        tonAmount: coins
+    }) {
+        return MintCurveWallet.toCell(MintCurveWallet.create(body));
+    }
+
     static createCellOfBurnNotificationForMinter(body: {
         queryId: uint64
         jettonAmount: coins
@@ -1032,6 +1220,14 @@ export class JettonMinterV2 implements c.Contract {
         sendExcessesTo: c.Address | null
     }) {
         return BurnNotificationForMinter.toCell(BurnNotificationForMinter.create(body));
+    }
+
+    static createCellOfBurnNotificationTracked(body: {
+        queryId: uint64
+        jettonAmount: coins
+        burnInitiator: c.Address
+    }) {
+        return BurnNotificationTracked.toCell(BurnNotificationTracked.create(body));
     }
 
     static createCellOfRequestWalletAddress(body: {
@@ -1094,6 +1290,18 @@ export class JettonMinterV2 implements c.Contract {
         });
     }
 
+    async sendMintCurveWallet(provider: ContractProvider, via: Sender, msgValue: coins, body: {
+        queryId: uint64
+        jettonAmount: coins
+        tonAmount: coins
+    }, extraOptions?: ExtraSendOptions) {
+        return provider.internal(via, {
+            value: msgValue,
+            body: MintCurveWallet.toCell(MintCurveWallet.create(body)),
+            ...extraOptions
+        });
+    }
+
     async sendBurnNotificationForMinter(provider: ContractProvider, via: Sender, msgValue: coins, body: {
         queryId: uint64
         jettonAmount: coins
@@ -1103,6 +1311,18 @@ export class JettonMinterV2 implements c.Contract {
         return provider.internal(via, {
             value: msgValue,
             body: BurnNotificationForMinter.toCell(BurnNotificationForMinter.create(body)),
+            ...extraOptions
+        });
+    }
+
+    async sendBurnNotificationTracked(provider: ContractProvider, via: Sender, msgValue: coins, body: {
+        queryId: uint64
+        jettonAmount: coins
+        burnInitiator: c.Address
+    }, extraOptions?: ExtraSendOptions) {
+        return provider.internal(via, {
+            value: msgValue,
+            body: BurnNotificationTracked.toCell(BurnNotificationTracked.create(body)),
             ...extraOptions
         });
     }

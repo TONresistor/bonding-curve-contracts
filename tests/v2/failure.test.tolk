@@ -14,6 +14,7 @@ import "@contracts/v1/jetton-utils"
 import "@contracts/v1/messages"
 import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
+import "@contracts/v2/wallet-messages"
 
 fun failureMaster(owner: address): BondingCurveMasterV2 {
     val master = BondingCurveMasterV2.fromStorage({ admin: owner, nextAdmin: null, treasury: owner, totalLaunches: 0, feesBalance: 0 });
@@ -167,8 +168,8 @@ get fun `test v2: failed mint cancels launch and refunds dev funds once`() {
     prices.other = other;
     expensive.setGasPrices(prices, BASECHAIN);
     testing.setConfig(expensive);
-    val failed = cursor.executeTill<MintNewJettons>({ to: minter });
-    expect(failed).toHaveFailedTx<MintNewJettons>({ to: minter, exitCode: 48 });
+    val failed = cursor.executeTill<MintCurveWallet>({ to: minter });
+    expect(failed).toHaveFailedTx<MintCurveWallet>({ to: minter, exitCode: 48 });
     testing.setConfig(original);
     val recovery = cursor.executeAllRemaining();
     cursor.close();

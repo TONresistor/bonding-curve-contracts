@@ -46,6 +46,9 @@ jobs:
       - name: Linter
         run: acton check --output-format github
 
+      - name: Prepare DeDust libraries
+        run: python3 scripts/shared/run-market-simulation.py v2 --prepare-only
+
       - name: Test
         run: acton test
 

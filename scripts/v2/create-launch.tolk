@@ -20,10 +20,11 @@ fun createLaunch(
     minDevTokens: coins,
     graduationTon: int = 2000,
     reserveRatio: uint8 = 5,
-    minBuyNano: coins = 0,
-    maxBuyNano: coins = 0,
+    minBuyBps: uint16 = 0,
+    maxBuyBps: uint16 = 0,
     beneficiaryWallets: array<address> = [],
     beneficiaryBps: array<uint16> = [],
+    buybackBurn: bool = false,
 ) {
     val wallet = scripts.wallet(scriptString(walletName));
     assert (beneficiaryWallets.size() == beneficiaryBps.size()) throw 49;
@@ -46,9 +47,10 @@ fun createLaunch(
         minDevTokens,
         graduationThreshold: graduationTon * 1000000000,
         reserveRatio,
-        minBuy: minBuyNano,
-        maxBuy: maxBuyNano,
+        minBuyBps,
+        maxBuyBps,
         beneficiaries,
+        buybackBurn,
     };
     validateLaunchOptions(options);
     println("Effective fees (parts per billion): {}", effectiveFeeRates(creatorFeeBps));
@@ -82,10 +84,11 @@ fun main(
     minDevTokens: coins,
     graduationTon: int = 2000,
     reserveRatio: uint8 = 5,
-    minBuyNano: coins = 0,
-    maxBuyNano: coins = 0,
+    minBuyBps: uint16 = 0,
+    maxBuyBps: uint16 = 0,
     beneficiaryWallets: array<address> = [],
     beneficiaryBps: array<uint16> = [],
+    buybackBurn: bool = false,
 ) {
     createLaunch(
         walletName,
@@ -98,9 +101,10 @@ fun main(
         minDevTokens,
         graduationTon,
         reserveRatio,
-        minBuyNano,
-        maxBuyNano,
+        minBuyBps,
+        maxBuyBps,
         beneficiaryWallets,
         beneficiaryBps,
+        buybackBurn,
     );
 }

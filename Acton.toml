@@ -116,7 +116,7 @@ depends = ["JettonWalletV2"]
 
 [contracts.BondingCurveV2]
 src = "contracts/v2/BondingCurve.tolk"
-depends = ["JettonWalletV2", "FeeCollectorV2"]
+depends = ["JettonWalletV2", "FeeCollectorV2", "BuybackBurnV2"]
 
 [contracts.BondingCurveMasterV2]
 src = "contracts/v2/BondingCurveMaster.tolk"
@@ -133,3 +133,7 @@ depends = ["JettonWalletV2", "FeeSplitterV2"]
 [contracts.JettonWalletV2]
 src = "contracts/v2/JettonWallet.tolk"
 depends = []
+
+[contracts.BuybackBurnV2]
+src = "contracts/v2/BuybackBurn.tolk"
+depends = ["JettonWalletV2"]

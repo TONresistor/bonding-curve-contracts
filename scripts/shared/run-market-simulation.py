@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--operations", type=int)
     parser.add_argument("--actors", type=int)
     parser.add_argument("--seeds", type=int)
+    parser.add_argument("--prepare-only", action="store_true", help="Fetch pinned DeDust libraries without running a campaign")
     parser.add_argument("--offline", action="store_true", help="Fail if a library is not cached")
     parser.add_argument("--fork-block", type=int, help="Read mainnet at this explicit block; no broadcasting")
     parser.add_argument("--output", type=Path, help="Artifact directory; must be inside this repository")
@@ -73,6 +74,9 @@ def main():
                 raise RuntimeError(f"Cannot fetch public DeDust {name} library")
             time.sleep(2 ** (attempt + 1))
         temporary.replace(target)
+    if args.prepare_only:
+        print("DeDust libraries ready; tests verify their cell hashes")
+        return
     manifest = {
         "acton": version, "timestamp": 1801267200, "seed_start": args.seed,
         "seeds": count, "operations_per_seed": operations, "actors": actors,
@@ -108,7 +112,10 @@ def main():
             metrics = {"scenarios": len(cases), "presets": 135, "migrations": len(cases), "cases": cases}
             finalizations = re.findall(r"^FINALIZATION_PASS mode=(\d+)$", contents, re.MULTILINE)
             metrics["finalization_checks"] = len(finalizations)
+            limits = re.findall(r"^V2_LIMITS_PASS ratio=(\d+)", contents, re.MULTILINE)
+            metrics["limit_checks"] = len(limits)
             passed = passed and len(cases) == 540 and sorted(finalizations) == ["0", "1"]
+            passed = passed and sorted(limits) == ["3", "5", "8"]
         run = {"seed": seed, "passed": passed, "exit_code": result.returncode,
                "seconds": round(time.monotonic() - start, 3), "metrics": metrics,
                "log": str(log.relative_to(ROOT)), "command": command,
@@ -118,7 +125,7 @@ def main():
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
         if args.profile == "v2":
             print(f"V2 {'PASS' if passed else 'FAIL'} scenarios={metrics['scenarios']} "
-                  f"finalization={metrics['finalization_checks']}", flush=True)
+                  f"finalization={metrics['finalization_checks']} limits={metrics['limit_checks']}", flush=True)
         else:
             print(f"seed={seed} {'PASS' if passed else 'FAIL'} tx={metrics.get('transactions', '?')} "
                   f"claims={metrics.get('claims', '?')}", flush=True)

@@ -124,16 +124,20 @@ get fun `test v2: invalid curve limits and beneficiary configurations reject bef
     o.reserveRatio = 4;
     invalidOptions(master, owner, o, 8001);
     o.reserveRatio = 8;
-    o.minBuy = ton("250") + 1;
+    o.minBuyBps = 112;
     invalidOptions(master, owner, o, 8002);
-    o.minBuy = ton("2");
-    o.maxBuy = ton("1");
+    o.minBuyBps = 200;
+    o.maxBuyBps = 100;
     invalidOptions(master, owner, o, 8003);
-    o.minBuy = 0;
-    o.maxBuy = 0;
-    o.maxBuy = 1;
+    o.minBuyBps = 100;
+    invalidOptions(master, owner, o, 8098);
+    o.minBuyBps = 10001;
+    o.maxBuyBps = 0;
+    invalidOptions(master, owner, o, 8097);
+    o.minBuyBps = 0;
+    o.maxBuyBps = 10001;
     invalidOptions(master, owner, o, 8099);
-    o.maxBuy = 0;
+    o.maxBuyBps = 0;
     o.beneficiaries = FeeBeneficiaries { shares: [] }.toCell();
     invalidOptions(master, owner, o, 8004);
     var shares: map<address, uint16> = [];
@@ -157,84 +161,167 @@ get fun `test v2: invalid curve limits and beneficiary configurations reject bef
     invalidOptions(master, owner, o, 8007);
 }
 
-get fun `test v2: independent public buy limits include exact boundaries and exempt dev buy`() {
+fun grossForTokens(curve: BondingCurveV2, tokens: coins): coins {
+    var low: coins = 0;
+    var high: coins = ton("1000000");
+    while (low < high) {
+        val mid = (low + high) / 2;
+        if (curve.getQuoteBuy(mid) >= tokens) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return low;
+}
+
+get fun `test v2: supply percentage limits check delivered tokens for all supply and fee presets`() {
     val (master, owner) = optionsMaster();
-    val buyer = testing.treasury("limits-buyer").address;
-    var mode = 0;
-    repeat (4) {
-        val o = LaunchOptions {
-            supply: 1000000000000000000,
-            creatorFeeBps: 100,
-            devBuyAmount: ton("100"),
-            minDevTokens: 0,
-            minBuy: mode == 1 || mode == 3 ? ton("1") : 0,
-            maxBuy: mode == 2 || mode == 3 ? ton("10") : 0,
-        };
-        val curve = optionsLaunch(master, owner, o, 8100 + mode);
-        expect(curve.getCurveData().realTonReserve).toEqual(ton("98"));
-        val minter = JettonMinterV2.fromAddress(curve.getCurveData().jettonMinter!);
-        val wallet = JettonWallet.fromAddress(minter.getWalletAddress(buyer));
-        if (o.minBuy > 0) {
-            val before = curve.getCurveData();
-            val rejected = curve.sendBuyJettons(
-                buyer,
-                2,
-                0,
-                { value: o.minBuy - 1 + ton("0.05"), bounce: true },
-            );
-            expect(rejected).toHaveFailedTx<BuyJettons>({ to: curve.address, exitCode: 49 });
-            expect(curve.getCurveData().realTonReserve).toEqual(before.realTonReserve);
-            expect(curve.getCurveData().curveJettonBalance).toEqual(before.curveJettonBalance);
-        }
-        val first: coins = o.minBuy > 0 ? o.minBuy : ton("0.01");
-        val quote = curve.getQuoteBuy(first);
-        expect(
-            curve.sendBuyJettons(buyer, 3, quote, { value: first + ton("0.05"), bounce: true }),
-        ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
-        expect(wallet.getWalletData().jettonBalance).toEqual(quote);
-        val last: coins = o.maxBuy > 0 ? o.maxBuy : ton("20");
-        expect(
-            curve.sendBuyJettons(buyer, 4, 0, { value: last + ton("0.05"), bounce: true }),
-        ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
-        if (o.maxBuy > 0) {
-            val before = curve.getCurveData();
-            val tokensBefore = wallet.getWalletData().jettonBalance;
-            expect(
-                curve.sendBuyJettons(
+    val buyer = testing.treasury("percentage-buyer").address;
+    val supplies: array<coins> = [100000000000000000, 1000000000000000000, 10000000000000000000];
+    val fees: array<uint16> = [0, 10, 50, 100, 200];
+    var salt: uint64 = 8500;
+    var a = 0;
+    repeat (3) {
+        var b = 0;
+        repeat (5) {
+            var mode = 0;
+            repeat (4) {
+                val o = LaunchOptions {
+                    supply: supplies.get(a),
+                    creatorFeeBps: fees.get(b),
+                    devBuyAmount: ton("100"),
+                    minDevTokens: 0,
+                    minBuyBps: mode == 1 || mode == 3 ? 10 : 0,
+                    maxBuyBps: mode == 2 || mode == 3 ? 100 : 0,
+                };
+                val curve = optionsLaunch(master, owner, o, salt);
+                val preview = curve.getLaunchPreview();
+                expect(preview.minBuyTokens).toEqual(o.supply * o.minBuyBps / 10000);
+                expect(preview.maxBuyTokens).toEqual(o.supply * o.maxBuyBps / 10000);
+                val minter = JettonMinterV2.fromAddress(curve.getCurveData().jettonMinter!);
+                val wallet = JettonWallet.fromAddress(minter.getWalletAddress(buyer));
+                expect(
+                    JettonWallet
+                        .fromAddress(minter.getWalletAddress(owner))
+                        .getWalletData()
+                        .jettonBalance >
+                        o.supply / 100,
+                ).toEqual(true);
+                val first = o.minBuyBps > 0
+                    ? grossForTokens(curve, preview.minBuyTokens)
+                    : ton("0.01");
+                if (o.minBuyBps > 0) {
+                    expect(curve.getQuoteBuy(first - 1) < preview.minBuyTokens).toEqual(true);
+                    val state = curve.getCurveData();
+                    val rejected = curve.sendBuyJettons(
+                        buyer,
+                        2,
+                        0,
+                        { value: first - 1 + ton("0.05"), bounce: true },
+                    );
+                    expect(
+                        rejected,
+                    ).toHaveFailedTx<BuyJettons>({ to: curve.address, exitCode: 49 });
+                    expect(curve.getCurveData().realTonReserve).toEqual(state.realTonReserve);
+                    expect(curve.getCurveData().curveJettonBalance).toEqual(
+                        state.curveJettonBalance,
+                    );
+                }
+                val quote = curve.getQuoteBuy(first);
+                expect(
+                    curve.sendBuyJettons(
+                        buyer,
+                        3,
+                        quote,
+                        { value: first + ton("0.05"), bounce: true },
+                    ),
+                ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+                expect(wallet.getWalletData().jettonBalance).toEqual(quote);
+                if (o.maxBuyBps > 0) {
+                    val tooMuch = grossForTokens(curve, preview.maxBuyTokens + 1);
+                    expect(curve.getQuoteBuy(tooMuch) > preview.maxBuyTokens).toEqual(true);
+                    expect(curve.getQuoteBuy(tooMuch - 1) <= preview.maxBuyTokens).toEqual(true);
+                    val state = curve.getCurveData();
+                    expect(
+                        curve.sendBuyJettons(
+                            buyer,
+                            4,
+                            0,
+                            { value: tooMuch + ton("0.05"), bounce: true },
+                        ),
+                    ).toHaveFailedTx<BuyJettons>({ to: curve.address, exitCode: 49 });
+                    expect(curve.getCurveData().realTonReserve).toEqual(state.realTonReserve);
+                    expect(curve.getCurveData().curveJettonBalance).toEqual(
+                        state.curveJettonBalance,
+                    );
+                    expect(wallet.getWalletData().jettonBalance).toEqual(quote);
+                    val accepted = curve.getQuoteBuy(tooMuch - 1);
+                    expect(
+                        curve.sendBuyJettons(
+                            buyer,
+                            5,
+                            accepted,
+                            { value: tooMuch - 1 + ton("0.05"), bounce: true },
+                        ),
+                    ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+                    expect(wallet.getWalletData().jettonBalance).toEqual(quote + accepted);
+                    val later = grossForTokens(curve, preview.maxBuyTokens + 1) - 1;
+                    expect(later > tooMuch - 1).toEqual(true);
+                    val laterOut = curve.getQuoteBuy(later);
+                    expect(laterOut <= preview.maxBuyTokens).toEqual(true);
+                    expect(
+                        curve.sendBuyJettons(
+                            buyer,
+                            6,
+                            laterOut,
+                            { value: later + ton("0.05"), bounce: true },
+                        ),
+                    ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+                    expect(
+                        wallet.getWalletData().jettonBalance > preview.maxBuyTokens,
+                    ).toEqual(true);
+                } else {
+                    val unlimited = grossForTokens(curve, o.supply * 200 / 10000);
+                    expect(
+                        curve.sendBuyJettons(
+                            buyer,
+                            7,
+                            0,
+                            { value: unlimited + ton("0.05"), bounce: true },
+                        ),
+                    ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+                    expect(wallet.getWalletData().jettonBalance > o.supply / 100).toEqual(true);
+                }
+                val beforeSell = wallet.getWalletData().jettonBalance;
+                val reserve = curve.getCurveData().realTonReserve;
+                net.send(
                     buyer,
-                    5,
-                    0,
-                    { value: o.maxBuy + 1 + ton("0.05"), bounce: true },
-                ),
-            ).toHaveFailedTx<BuyJettons>({ to: curve.address, exitCode: 49 });
-            expect(curve.getCurveData().realTonReserve).toEqual(before.realTonReserve);
-            expect(wallet.getWalletData().jettonBalance).toEqual(tokensBefore);
+                    createMessage({ bounce: true, dest: wallet.address, value: ton("0.4"), body: AskToTransfer {
+                            queryId: 8,
+                            jettonAmount: beforeSell / 2,
+                            transferRecipient: curve.address,
+                            sendExcessesTo: buyer,
+                            customPayload: null,
+                            forwardTonAmount: ton("0.2"),
+                            forwardPayload: beginCell()
+                                .storeUint(1, 1)
+                                .storeRef(
+                                    SellPayload {
+                                        queryId: 8,
+                                        minTonOut: 0,
+                                    }.toCell(),
+                                )
+                                .toSlice(),
+                        } }),
+                );
+                expect(wallet.getWalletData().jettonBalance).toEqual(beforeSell - beforeSell / 2);
+                expect(curve.getCurveData().realTonReserve < reserve).toEqual(true);
+                salt += 1;
+                mode += 1;
+            }
+            b += 1;
         }
-        val beforeSell = wallet.getWalletData().jettonBalance;
-        val reserveBeforeSell = curve.getCurveData().realTonReserve;
-        val sell = beforeSell / 2;
-        net.send(
-            buyer,
-            createMessage({ bounce: true, dest: wallet.address, value: ton("0.4"), body: AskToTransfer {
-                    queryId: 6,
-                    jettonAmount: sell,
-                    transferRecipient: curve.address,
-                    sendExcessesTo: buyer,
-                    customPayload: null,
-                    forwardTonAmount: ton("0.2"),
-                    forwardPayload: beginCell()
-                        .storeUint(1, 1)
-                        .storeRef(
-                            SellPayload {
-                                queryId: 6,
-                                minTonOut: 0,
-                            }.toCell(),
-                        )
-                        .toSlice(),
-                } }),
-        );
-        expect(wallet.getWalletData().jettonBalance).toEqual(beforeSell - sell);
-        expect(curve.getCurveData().realTonReserve < reserveBeforeSell).toEqual(true);
-        mode += 1;
+        a += 1;
     }
 }

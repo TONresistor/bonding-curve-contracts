@@ -8,6 +8,7 @@ import "@acton/emulation/network"
 import "@acton/testing/assert"
 import "@contracts/v1/messages"
 import "@contracts/v1/storage"
+import "@contracts/v2/wallet-messages"
 
 /// Storage `MinterStorage` is defined in `@contracts/v1/storage`
 struct JettonMinterV2 {
@@ -75,6 +76,23 @@ fun JettonMinterV2.sendMintNewJettons(
     return net.send(from, genericMsg);
 }
 
+fun JettonMinterV2.sendMintCurveWallet(
+    self,
+    from: address,
+    queryId: uint64,
+    jettonAmount: coins,
+    tonAmount: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: MintCurveWallet { queryId, jettonAmount, tonAmount },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun JettonMinterV2.sendBurnNotificationForMinter(
     self,
     from: address,
@@ -89,6 +107,23 @@ fun JettonMinterV2.sendBurnNotificationForMinter(
         value: config.value,
         dest: self.address,
         body: BurnNotificationForMinter { queryId, jettonAmount, burnInitiator, sendExcessesTo },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonMinterV2.sendBurnNotificationTracked(
+    self,
+    from: address,
+    queryId: uint64,
+    jettonAmount: coins,
+    burnInitiator: address,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: BurnNotificationTracked { queryId, jettonAmount, burnInitiator },
     });
     return net.send(from, genericMsg);
 }

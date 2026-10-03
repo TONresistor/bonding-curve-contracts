@@ -3,6 +3,9 @@ import "bonding-dedust"
 import "bonding-math"
 import "bonding-messages"
 import "bonding-storage"
+import "buyback-address"
+import "buyback-messages"
+import "buyback-storage"
 import "collector-address"
 import "fee-addresses"
 import "fee-storage"
@@ -34,6 +37,7 @@ type AllowedMessageToCurve =
     | Graduate
     | RetryMigration
     | ConfirmMigration
+    | PrepareBuyback
     | DepositNotification
     | TakePositionState
     | TransferFailed
@@ -46,6 +50,7 @@ type BounceableOutboundOps =
     | AskToTransfer
     | AskToTransferTracked
     | MintNewJettons
+    | MintCurveWallet
     | DepositProtocolFees
     | DedustPayNative
     | DropMinterAdmin
@@ -93,16 +98,11 @@ fun onInternalMessage(in: InMessage) {
             }
             storage.progress = progress.toCell();
             storage.save();
-            mintLaunchTokens(
-                msg.jettonMinter,
-                contract.getAddress(),
-                o.supply - progress.devTokens,
-                1,
-                ton("0.05"),
-            );
-            if (progress.devTokens > 0) {
-                mintLaunchTokens(msg.jettonMinter, config.creator, progress.devTokens, 2, 0);
-            }
+            createMessage({ bounce: true, dest: msg.jettonMinter, value: ton("0.22"), body: MintCurveWallet {
+                    queryId: 1,
+                    jettonAmount: o.supply - progress.devTokens,
+                    tonAmount: ton("0.2"),
+                } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
         }
 
         ReturnExcessesBack => {}
@@ -170,8 +170,6 @@ fun onInternalMessage(in: InMessage) {
 
             val tonIn = in.valueCoins - CURVE_TRANSFER_VALUE;
             val options = config.options.load();
-            assert (tonIn >= options.minBuy) throw Errors.InvalidMessage;
-            assert (options.maxBuy == 0 || tonIn <= options.maxBuy) throw Errors.InvalidMessage;
             val (jettonsOut, feeTon) = computeBuyOut(
                 tonIn,
                 storage.virtualTonReserve,
@@ -181,6 +179,11 @@ fun onInternalMessage(in: InMessage) {
             );
 
             assert (jettonsOut > 0) throw Errors.BalanceError;
+            val (minBuyTokens, maxBuyTokens) = buyTokenLimits(options);
+            assert (jettonsOut >= minBuyTokens) throw Errors.InvalidMessage;
+            assert (
+                options.maxBuyBps == 0 || jettonsOut <= maxBuyTokens
+            ) throw Errors.InvalidMessage;
             assert (jettonsOut >= msg.minJettonsOut) throw Errors.InvalidMessage;
 
             assert (
@@ -285,11 +288,10 @@ fun onInternalMessage(in: InMessage) {
 
             val initiator = msg.transferInitiator;
 
-            if (storage.state == CURVE_STATE_INITIALIZING) {
-                if (initiator == null || initiator! != contract.getAddress()) {
-                    return;
-                }
-
+            if (
+                storage.state == CURVE_STATE_INITIALIZING && initiator != null &&
+                initiator! == contract.getAddress()
+            ) {
                 var progress = storage.progress.load();
                 if (progress.curveReceived || msg.queryId != 1) {
                     return;
@@ -300,6 +302,15 @@ fun onInternalMessage(in: InMessage) {
                 progress.curveReceived = true;
                 storage.curveJettonBalance = msg.jettonAmount;
                 storage.progress = progress.toCell();
+                if (progress.devTokens > 0) {
+                    mintLaunchTokens(
+                        storage.jettonMinter!,
+                        config.creator,
+                        progress.devTokens,
+                        2,
+                        0,
+                    );
+                }
                 finishLaunch(mutate storage);
                 return;
             }
@@ -377,16 +388,8 @@ fun onInternalMessage(in: InMessage) {
                         inner = inner.loadRef().beginParse();
                     }
                 }
-                if (inner.remainingBitsCount() >= 32) {
-                    val opcode = inner.loadUint(32);
-                    if (opcode == 0xa0a0a020) {
-                        if (inner.remainingBitsCount() >= 64) {
-                            inner.loadUint(64);
-                            minTonOut = inner.loadCoins();
-                        } else {
-                            slippageParseFailed = true;
-                        }
-                    }
+                if (inner.remainingBitsCount() >= 32 && inner.preloadUint(32) == 0xa0a0a020) {
+                    minTonOut = SellPayload.fromSlice(inner).minTonOut;
                 }
             } catch (_e) {
                 slippageParseFailed = true;
@@ -412,7 +415,7 @@ fun onInternalMessage(in: InMessage) {
                     config.options.load().creatorFeeBps,
                 );
 
-                if (tonOut < minTonOut) {
+                if (slippageParseFailed || tonOut < minTonOut) {
                     val refundBody: AskToTransfer = {
                         queryId: msg.queryId,
                         jettonAmount: msg.jettonAmount,
@@ -630,6 +633,27 @@ fun onInternalMessage(in: InMessage) {
             }
         }
 
+        PrepareBuyback => {
+            val s = BondingCurveStorage.load();
+            assert (
+                s.config.load().options.load().buybackBurn && s.jettonMinter != null &&
+                s.state != CURVE_STATE_INITIALIZING &&
+                s.state != CURVE_STATE_CANCELLED
+            ) throw Errors.InvalidOp;
+            assert (in.valueCoins >= ton("0.15")) throw Errors.NotEnoughGas;
+            createMessage({ bounce: true, dest: buybackAddress(
+                    contract.getAddress(),
+                ), value: ton("0.1"), body: InitBuyback {
+                    queryId: msg.queryId,
+                    config: BuybackConfig {
+                        minter: s.jettonMinter!,
+                        collector: curveCollector(s).calculateAddress(),
+                        splitter: curveFeeManager(s).calculateAddress(),
+                        creatorFeeBps: s.config.load().options.load().creatorFeeBps,
+                    }.toCell(),
+                    active: s.state == CURVE_STATE_MIGRATED,
+                } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
+        }
         ConfirmMigration => {
             val storage = BondingCurveStorage.load();
             assert (storage.state == CURVE_STATE_AWAITING_LIQUIDITY) throw Errors.InvalidOp;
@@ -772,6 +796,14 @@ fun onBouncedMessage(in: InMessageBounced) {
             restoreMigrationJettons(mutate storage, parsed.queryId, parsed.jettonAmount);
         }
         MintNewJettons => {
+            if (
+                storage.state == CURVE_STATE_INITIALIZING && storage.jettonMinter != null &&
+                in.senderAddress == storage.jettonMinter!
+            ) {
+                cancelLaunch(mutate storage);
+            }
+        }
+        MintCurveWallet => {
             if (
                 storage.state == CURVE_STATE_INITIALIZING && storage.jettonMinter != null &&
                 in.senderAddress == storage.jettonMinter!
@@ -995,7 +1027,8 @@ fun curveCollector(storage: BondingCurveStorage): AutoDeployAddress {
         storage.progress.load().protocolTreasury!,
         config.options.load().creatorFeeBps,
         contract.getAddress(),
-        config.options.load().beneficiaries,
+        curveBeneficiaries(config.options.load()),
+        config.options.load().buybackBurn,
     );
 }
 
@@ -1011,7 +1044,8 @@ fun curveFeeManager(storage: BondingCurveStorage): AutoDeployAddress {
         protocol: storage.progress.load().protocolTreasury!,
         creatorBps: options.creatorFeeBps,
         curve: contract.getAddress(),
-        beneficiaries: options.beneficiaries,
+        beneficiaries: curveBeneficiaries(options),
+        buybackBurn: options.buybackBurn,
     }.toCell();
     return splitterAddress(
         curveCollector(storage).calculateAddress(),
@@ -1159,4 +1193,19 @@ fun confirmLockedMigration(
             migrationFee: MIGRATION_FEE,
             strandedJettons: storage.curveJettonBalance,
         } }).send(SEND_MODE_REGULAR);
+}
+
+fun curveBeneficiaries(options: LaunchOptions): Cell<FeeBeneficiaries>? {
+    if (!options.buybackBurn) {
+        return options.beneficiaries;
+    }
+    var shares: map<address, uint16> = [];
+    shares.set(buybackAddress(contract.getAddress()).calculateAddress(), 10000);
+    return FeeBeneficiaries { shares }.toCell();
+}
+
+get fun get_buyback_address(): address? {
+    return BondingCurveStorage.load().config.load().options.load().buybackBurn
+        ? buybackAddress(contract.getAddress()).calculateAddress()
+        : null;
 }

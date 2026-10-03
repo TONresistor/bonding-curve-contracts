@@ -144,6 +144,48 @@ type coins = bigint
 type uint64 = bigint
 
 /**
+ > struct (0xa0a0b056) InternalCurveMint {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ > }
+ */
+export interface InternalCurveMint {
+    readonly $: 'InternalCurveMint'
+    queryId: uint64
+    jettonAmount: coins
+}
+
+export const InternalCurveMint = {
+    PREFIX: 0xa0a0b056,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+    }): InternalCurveMint {
+        return {
+            $: 'InternalCurveMint',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): InternalCurveMint {
+        loadAndCheckPrefix32(s, 0xa0a0b056, 'InternalCurveMint');
+        return {
+            $: 'InternalCurveMint',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+        }
+    },
+    store(self: InternalCurveMint, b: c.Builder): void {
+        b.storeUint(0xa0a0b056, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+    },
+    toCell(self: InternalCurveMint): c.Cell {
+        return makeCellFrom<InternalCurveMint>(self, InternalCurveMint.store);
+    }
+}
+
+/**
  > struct (0xa0a0b050) MintDelivered {
  >     queryId: uint64
  >     amount: coins
@@ -397,6 +439,185 @@ export const InternalTransferTracked = {
     },
     toCell(self: InternalTransferTracked): c.Cell {
         return makeCellFrom<InternalTransferTracked>(self, InternalTransferTracked.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b057) AskToBurnTracked {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ > }
+ */
+export interface AskToBurnTracked {
+    readonly $: 'AskToBurnTracked'
+    queryId: uint64
+    jettonAmount: coins
+}
+
+export const AskToBurnTracked = {
+    PREFIX: 0xa0a0b057,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+    }): AskToBurnTracked {
+        return {
+            $: 'AskToBurnTracked',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): AskToBurnTracked {
+        loadAndCheckPrefix32(s, 0xa0a0b057, 'AskToBurnTracked');
+        return {
+            $: 'AskToBurnTracked',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+        }
+    },
+    store(self: AskToBurnTracked, b: c.Builder): void {
+        b.storeUint(0xa0a0b057, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+    },
+    toCell(self: AskToBurnTracked): c.Cell {
+        return makeCellFrom<AskToBurnTracked>(self, AskToBurnTracked.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b058) BurnNotificationTracked {
+ >     queryId: uint64
+ >     jettonAmount: coins
+ >     burnInitiator: address
+ > }
+ */
+export interface BurnNotificationTracked {
+    readonly $: 'BurnNotificationTracked'
+    queryId: uint64
+    jettonAmount: coins
+    burnInitiator: c.Address
+}
+
+export const BurnNotificationTracked = {
+    PREFIX: 0xa0a0b058,
+
+    create(args: {
+        queryId: uint64
+        jettonAmount: coins
+        burnInitiator: c.Address
+    }): BurnNotificationTracked {
+        return {
+            $: 'BurnNotificationTracked',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): BurnNotificationTracked {
+        loadAndCheckPrefix32(s, 0xa0a0b058, 'BurnNotificationTracked');
+        return {
+            $: 'BurnNotificationTracked',
+            queryId: s.loadUintBig(64),
+            jettonAmount: s.loadCoins(),
+            burnInitiator: s.loadAddress(),
+        }
+    },
+    store(self: BurnNotificationTracked, b: c.Builder): void {
+        b.storeUint(0xa0a0b058, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.jettonAmount);
+        b.storeAddress(self.burnInitiator);
+    },
+    toCell(self: BurnNotificationTracked): c.Cell {
+        return makeCellFrom<BurnNotificationTracked>(self, BurnNotificationTracked.store);
+    }
+}
+
+/**
+ > struct (0xa0a0b05a) BurnFailed {
+ >     queryId: uint64
+ >     amount: coins
+ > }
+ */
+export interface BurnFailed {
+    readonly $: 'BurnFailed'
+    queryId: uint64
+    amount: coins
+}
+
+export const BurnFailed = {
+    PREFIX: 0xa0a0b05a,
+
+    create(args: {
+        queryId: uint64
+        amount: coins
+    }): BurnFailed {
+        return {
+            $: 'BurnFailed',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): BurnFailed {
+        loadAndCheckPrefix32(s, 0xa0a0b05a, 'BurnFailed');
+        return {
+            $: 'BurnFailed',
+            queryId: s.loadUintBig(64),
+            amount: s.loadCoins(),
+        }
+    },
+    store(self: BurnFailed, b: c.Builder): void {
+        b.storeUint(0xa0a0b05a, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeCoins(self.amount);
+    },
+    toCell(self: BurnFailed): c.Cell {
+        return makeCellFrom<BurnFailed>(self, BurnFailed.store);
+    }
+}
+
+/**
+ > struct WalletStorageV2 {
+ >     jettonBalance: coins
+ >     ownerAddress: address
+ >     minterAddress: address
+ >     protection: RemainingBitsAndRefs
+ > }
+ */
+export interface WalletStorageV2 {
+    readonly $: 'WalletStorageV2'
+    jettonBalance: coins
+    ownerAddress: c.Address
+    minterAddress: c.Address
+    protection: RemainingBitsAndRefs
+}
+
+export const WalletStorageV2 = {
+    create(args: {
+        jettonBalance: coins
+        ownerAddress: c.Address
+        minterAddress: c.Address
+        protection: RemainingBitsAndRefs
+    }): WalletStorageV2 {
+        return {
+            $: 'WalletStorageV2',
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): WalletStorageV2 {
+        return {
+            $: 'WalletStorageV2',
+            jettonBalance: s.loadCoins(),
+            ownerAddress: s.loadAddress(),
+            minterAddress: s.loadAddress(),
+            protection: loadTolkRemaining(s),
+        }
+    },
+    store(self: WalletStorageV2, b: c.Builder): void {
+        b.storeCoins(self.jettonBalance);
+        b.storeAddress(self.ownerAddress);
+        b.storeAddress(self.minterAddress);
+        storeTolkRemaining(self.protection, b);
+    },
+    toCell(self: WalletStorageV2): c.Cell {
+        return makeCellFrom<WalletStorageV2>(self, WalletStorageV2.store);
     }
 }
 
@@ -900,49 +1121,6 @@ export const TopUpTons = {
 }
 
 /**
- > struct WalletStorage {
- >     jettonBalance: coins
- >     ownerAddress: address
- >     minterAddress: address
- > }
- */
-export interface WalletStorage {
-    readonly $: 'WalletStorage'
-    jettonBalance: coins
-    ownerAddress: c.Address
-    minterAddress: c.Address
-}
-
-export const WalletStorage = {
-    create(args: {
-        jettonBalance: coins
-        ownerAddress: c.Address
-        minterAddress: c.Address
-    }): WalletStorage {
-        return {
-            $: 'WalletStorage',
-            ...args
-        }
-    },
-    fromSlice(s: c.Slice): WalletStorage {
-        return {
-            $: 'WalletStorage',
-            jettonBalance: s.loadCoins(),
-            ownerAddress: s.loadAddress(),
-            minterAddress: s.loadAddress(),
-        }
-    },
-    store(self: WalletStorage, b: c.Builder): void {
-        b.storeCoins(self.jettonBalance);
-        b.storeAddress(self.ownerAddress);
-        b.storeAddress(self.minterAddress);
-    },
-    toCell(self: WalletStorage): c.Cell {
-        return makeCellFrom<WalletStorage>(self, WalletStorage.store);
-    }
-}
-
-/**
  > struct JettonWalletDataReply {
  >     jettonBalance: coins
  >     ownerAddress: address
@@ -1029,11 +1207,12 @@ function calculateDeployedAddress(code: c.Cell, data: c.Cell, options: DeployedA
 }
 
 export class JettonWalletV2 implements c.Contract {
-    static CodeCell = c.Cell.fromBase64('te6ccgECEQEABJMAART/APSkE/S88sgLAQIBYgIDAgLPBAUAHaD2BdqJofQB9JH0kGHwVQL1PiRjnLTHzFwcALXLCC8aijMltM/MfoAMI4m1ywlBQWCpJhsIdM/+gAwf44S1ywj3uy+9JLyP+HTPzH6ADAB4gHi7UTQ+gAg+kgwUSOgyAH6As7J7VQCjhvIz4UIEvpSghCgoLBSzwuOEss/AfoCyYBA+wDgXwPgidcngBgcD7ztRND6ACD6SPpIMFPAxwWOOfgqU5HIz4QgEvpS+lLJeCtUEjLIz4PLBM+FoMzM+RaE97ASgAtQA9ckyM+KAEDOy/fPUC3HBfLgSt9ROaDIAfoCEs7J7VQkkzBsIuMNIZMwNn+VF8cFwwDilSFus8MAkXDikXDjDYA0ODwAIF41FGQO2jhPTP/oA+lD6UPoA+JL4l1VRcPAB4NcsJQUFgqSOE9M/+gD6UPpQ+gD4kviXVVF/8AHg1ywgfFP1LOMC1ywlBQWCnOMC1ywiyvg95OMC1ywmm5CsZDHchA/y8AgJCgH+0z/6APpI+lD0AfoAIPQEAW6RMJHR4iP6RDDy0U34l/iTcPg6I3Jx4wT4OSBugRi3IuMEIW6BHRNYA+MEUCOoJaBzgQMscPg8oAFw+DagAXD4NqBzgQQCghAJZgGAcPg3oLzysO1E0PoAIPpI+kgw+JIixwXy4ElTOL7yr1E4oQsB/tM/+gD6SPpQ9AH6ACD0BAFukTCR0eIj+kQw8tFN+JciggiYloCg+JNw+DohcnHjBPg5IG6BGLci4wQhboEdE1gD4wRQI6gToHOBAyxw+DygAnD4NhKgAXD4NqBzgQQCghAJZgGAcPg3oLzysO1E0PoAIPpI+kgw+JIixwXy4EkMAOD4l/g5IG6BEJ5Y4wRxgQLycPg4AXD4NqCBD+dw+DagvPKw7UTQ+gAg+kj6SDD4kiLHBfLgSQTTP/oA+lAwU1G+8q9RUaHIAfoCFM7J7VTIz5Hvdl96yz9Y+gL6UvpUycjPhYgS+lJxzwtuzMmAUPsAAMDIAfoCEs7J7VT4KibIz4Qg+lIT+lLJeMjPkF41FGYayz9QCPoC+lQU+lRY+gLOycjPiYgBVHQlyM+DywTPhaDMzPkWhPewBIALJ9ckNhXOEsv3gRUNzwt5zMzMyYBQ+wAA0FM4vvKvUTihyAH6AhLOye1U+ComyM+EIPpSE/pSyXjIz5KCgsFSGss/UAj6AvpUFPpUWPoCzsnIz4mIAVR0JcjPg8sEz4WgzMz5FoT3sASACyfXJDYVzhLL94EVDc8LeczMzMmAUPsAAFjIz5HNi0JyKc8LPyj6AlJw+lQUzsnIz4UIFPpSUAT6AnHPC2oSzMmAEfsAAQAKIsIAwwAB+I5OBY4kggiYloDIz4UIEvpSAfoCghCgoLBRzwuKIs8LPwH6AsmAEfsAjiSCCJiWgMjPhQgS+lIB+gKCEKCgsFDPC4oizws/AfoCyYAR+wDikjVb4iJukl8D4PgnbxBYofgvoHOBBAKCEAlmAYBw+De2CXL7AsjPhQgS+lIQACKCENUydtvPC47LP8mBAIL7AA==');
+    static CodeCell = c.Cell.fromBase64('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');
 
     static Errors = {
         'ERROR_BALANCE_ERROR': 47,
         'Errors.NotEnoughGas': 48,
+        'Errors.InvalidOp': 72,
         'ERROR_NOT_OWNER': 73,
         'ERROR_NOT_VALID_WALLET': 74,
         'ERROR_WRONG_WORKCHAIN': 333,
@@ -1055,10 +1234,11 @@ export class JettonWalletV2 implements c.Contract {
         jettonBalance: coins
         ownerAddress: c.Address
         minterAddress: c.Address
+        protection: RemainingBitsAndRefs
     }, deployedOptions?: DeployedAddrOptions) {
         const initialState = {
             code: deployedOptions?.overrideContractCode ?? JettonWalletV2.CodeCell,
-            data: WalletStorage.toCell(WalletStorage.create(emptyStorage)),
+            data: WalletStorageV2.toCell(WalletStorageV2.create(emptyStorage)),
         };
         const address = calculateDeployedAddress(initialState.code, initialState.data, deployedOptions ?? {});
         return new JettonWalletV2(address, initialState);
@@ -1097,6 +1277,13 @@ export class JettonWalletV2 implements c.Contract {
         return AskToBurn.toCell(AskToBurn.create(body));
     }
 
+    static createCellOfAskToBurnTracked(body: {
+        queryId: uint64
+        jettonAmount: coins
+    }) {
+        return AskToBurnTracked.toCell(AskToBurnTracked.create(body));
+    }
+
     static createCellOfInternalTransferStep(body: {
         queryId: uint64
         jettonAmount: coins
@@ -1117,6 +1304,13 @@ export class JettonWalletV2 implements c.Contract {
         forwardPayload: ForwardPayloadRemainder
     }) {
         return InternalTransferTracked.toCell(InternalTransferTracked.create(body));
+    }
+
+    static createCellOfInternalCurveMint(body: {
+        queryId: uint64
+        jettonAmount: coins
+    }) {
+        return InternalCurveMint.toCell(InternalCurveMint.create(body));
     }
 
     static createCellOfTopUpTons(body: {
@@ -1177,6 +1371,17 @@ export class JettonWalletV2 implements c.Contract {
         });
     }
 
+    async sendAskToBurnTracked(provider: ContractProvider, via: Sender, msgValue: coins, body: {
+        queryId: uint64
+        jettonAmount: coins
+    }, extraOptions?: ExtraSendOptions) {
+        return provider.internal(via, {
+            value: msgValue,
+            body: AskToBurnTracked.toCell(AskToBurnTracked.create(body)),
+            ...extraOptions
+        });
+    }
+
     async sendInternalTransferStep(provider: ContractProvider, via: Sender, msgValue: coins, body: {
         queryId: uint64
         jettonAmount: coins
@@ -1207,6 +1412,17 @@ export class JettonWalletV2 implements c.Contract {
         });
     }
 
+    async sendInternalCurveMint(provider: ContractProvider, via: Sender, msgValue: coins, body: {
+        queryId: uint64
+        jettonAmount: coins
+    }, extraOptions?: ExtraSendOptions) {
+        return provider.internal(via, {
+            value: msgValue,
+            body: InternalCurveMint.toCell(InternalCurveMint.create(body)),
+            ...extraOptions
+        });
+    }
+
     async sendTopUpTons(provider: ContractProvider, via: Sender, msgValue: coins, body: {
     }, extraOptions?: ExtraSendOptions) {
         return provider.internal(via, {
@@ -1225,5 +1441,10 @@ export class JettonWalletV2 implements c.Contract {
             minterAddress: r.readSlice().loadAddress(),
             jettonWalletCode: r.readCell(),
         });
+    }
+
+    async getMinSellNotification(provider: ContractProvider): Promise<coins> {
+        const r = StackReader.fromGetMethod(1, await provider.get('get_min_sell_notification', []));
+        return r.readBigInt();
     }
 }

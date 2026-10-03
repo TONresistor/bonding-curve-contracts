@@ -13,6 +13,7 @@ struct FeeRecipients {
     creatorBps: uint16
     curve: address? = null
     beneficiaries: Cell<FeeBeneficiaries>? = null
+    buybackBurn: bool = false
 }
 
 struct CollectorStorage {

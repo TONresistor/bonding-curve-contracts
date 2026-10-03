@@ -1,6 +1,7 @@
 import "@stdlib/gas-payments"
 // Derived from the pinned reference in ../v1/JettonWallet.upstream.json.
 import "wallet-messages"
+import "wallet-storage"
 import "../v1/errors"
 import "../v1/fees-management"
 import "../v1/jetton-utils"
@@ -13,18 +14,24 @@ contract JettonWalletV2 {
     version: "2.1-v2"
     description: "Reference-derived jetton wallet with authenticated V2 delivery receipts"
     incomingMessages: AllowedMessageToWallet
-    storage: WalletStorage
+    storage: WalletStorageV2
 }
 
 type AllowedMessageToWallet =
     | AskToTransfer
     | AskToTransferTracked
     | AskToBurn
+    | AskToBurnTracked
     | InternalTransferStep
     | InternalTransferTracked
+    | InternalCurveMint
     | TopUpTons
 
-type BounceOpToHandle = InternalTransferStep | InternalTransferTracked | BurnNotificationForMinter
+type BounceOpToHandle =
+    | InternalTransferStep
+    | InternalTransferTracked
+    | BurnNotificationForMinter
+    | BurnNotificationTracked
 
 fun onBouncedMessage(in: InMessageBounced) {
     in.bouncedBody.skipBouncedPrefix();
@@ -32,6 +39,7 @@ fun onBouncedMessage(in: InMessageBounced) {
     val msg = lazy BounceOpToHandle.fromSlice(in.bouncedBody);
     var restoreAmount: coins = 0;
     var tracked = false;
+    var burn = false;
     var id: uint64 = 0;
     match (msg) {
         InternalTransferStep => {
@@ -45,11 +53,23 @@ fun onBouncedMessage(in: InMessageBounced) {
         BurnNotificationForMinter => {
             restoreAmount = msg.jettonAmount;
         }
+        BurnNotificationTracked => {
+            restoreAmount = msg.jettonAmount;
+            burn = true;
+            id = msg.queryId;
+        }
     }
 
-    var storage = lazy WalletStorage.load();
+    var storage = lazy WalletStorageV2.load();
     storage.jettonBalance += restoreAmount;
     storage.save();
+    if (burn) {
+        assert (in.senderAddress == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
+        createMessage({ bounce: false, dest: storage.ownerAddress, value: 0, body: BurnFailed {
+                queryId: id,
+                amount: restoreAmount,
+            } }).send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE);
+    }
     if (tracked) {
         createMessage({
             bounce: false,
@@ -67,6 +87,25 @@ fun onInternalMessage(in: InMessage) {
     val msg = lazy AllowedMessageToWallet.fromSlice(in.body);
 
     match (msg) {
+        InternalCurveMint => {
+            val storage = WalletStorageV2.load();
+            assert (in.senderAddress == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
+            assert (!storage.isCurveWallet()) throw Errors.InvalidOp;
+            receiveTokens(
+                in.senderAddress,
+                in.valueCoins,
+                InternalTransferStep {
+                    queryId: msg.queryId,
+                    jettonAmount: msg.jettonAmount,
+                    transferInitiator: storage.ownerAddress,
+                    sendExcessesTo: storage.ownerAddress,
+                    forwardTonAmount: ton("0.05"),
+                    forwardPayload: beginCell().storeUint(0, 1).toSlice(),
+                },
+                false,
+                true,
+            );
+        }
         InternalTransferStep => {
             receiveTokens(in.senderAddress, in.valueCoins, msg, false);
         }
@@ -97,7 +136,7 @@ fun onInternalMessage(in: InMessage) {
                 in.originalForwardFee,
             );
 
-            var storage = lazy WalletStorage.load();
+            var storage = lazy WalletStorageV2.load();
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
             assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
@@ -136,7 +175,7 @@ fun onInternalMessage(in: InMessage) {
                 in.originalForwardFee,
             );
 
-            var storage = lazy WalletStorage.load();
+            var storage = lazy WalletStorageV2.load();
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
             assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
@@ -164,10 +203,27 @@ fun onInternalMessage(in: InMessage) {
             );
         }
 
+        AskToBurnTracked => {
+            checkAmountIsEnoughToBurn(in.valueCoins);
+            var storage = WalletStorageV2.load();
+            assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
+            assert (
+                msg.jettonAmount > 0 && storage.jettonBalance >= msg.jettonAmount
+            ) throw ERROR_BALANCE_ERROR;
+            storage.jettonBalance -= msg.jettonAmount;
+            storage.save();
+            createMessage({ bounce: true, dest: storage.minterAddress, value: 0, body: BurnNotificationTracked {
+                    queryId: msg.queryId,
+                    jettonAmount: msg.jettonAmount,
+                    burnInitiator: storage.ownerAddress,
+                } }).send(
+                SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
+        }
         AskToBurn => {
             checkAmountIsEnoughToBurn(in.valueCoins);
 
-            var storage = lazy WalletStorage.load();
+            var storage = lazy WalletStorageV2.load();
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
             assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
@@ -196,7 +252,7 @@ fun onInternalMessage(in: InMessage) {
 }
 
 get fun get_wallet_data(): JettonWalletDataReply {
-    val storage = lazy WalletStorage.load();
+    val storage = lazy WalletStorageV2.load();
 
     return {
         jettonBalance: storage.jettonBalance,
@@ -206,8 +262,14 @@ get fun get_wallet_data(): JettonWalletDataReply {
     };
 }
 
-fun receiveTokens(sender: address, value: coins, msg: InternalTransferStep, tracked: bool) {
-    var storage = lazy WalletStorage.load();
+fun receiveTokens(
+    sender: address,
+    value: coins,
+    msg: InternalTransferStep,
+    tracked: bool,
+    protect: bool = false,
+) {
+    var storage = lazy WalletStorageV2.load();
     if (sender != storage.minterAddress) {
         assert (
             sender ==
@@ -217,6 +279,13 @@ fun receiveTokens(sender: address, value: coins, msg: InternalTransferStep, trac
                 contract.getCode(),
             )
         ) throw ERROR_NOT_VALID_WALLET;
+    }
+    if (protect) {
+        assert (sender == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
+        storage.protection = beginCell().storeBool(true).toSlice();
+    }
+    if (storage.isCurveWallet() && sender != storage.minterAddress) {
+        assert (msg.forwardTonAmount >= MIN_CURVE_SELL_NOTIFICATION) throw Errors.NotEnoughGas;
     }
     storage.jettonBalance += msg.jettonAmount;
     storage.save();
@@ -281,4 +350,8 @@ fun receiveTokens(sender: address, value: coins, msg: InternalTransferStep, trac
         // Storage is reserved before forwarding the remaining balance.
         excessesMsg.send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_IGNORE_ERRORS);
     }
+}
+
+get fun get_min_sell_notification(): coins {
+    return WalletStorageV2.load().isCurveWallet() ? MIN_CURVE_SELL_NOTIFICATION : 0;
 }

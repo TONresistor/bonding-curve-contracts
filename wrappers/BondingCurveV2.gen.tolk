@@ -9,6 +9,7 @@ import "@acton/testing/assert"
 import "@contracts/v1/messages"
 import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
+import "@contracts/v2/buyback-messages"
 import "@contracts/v2/wallet-messages"
 
 /// Storage `BondingCurveStorage` is defined in `@contracts/v2/bonding-storage`
@@ -224,6 +225,21 @@ fun BondingCurveV2.sendConfirmMigration(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendPrepareBuyback(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: PrepareBuyback { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun BondingCurveV2.sendDepositNotification(
     self,
     from: address,
@@ -418,4 +434,8 @@ fun BondingCurveV2.getFeeRates(self): FeeRatesReply {
 
 fun BondingCurveV2.getMigrationData(self): MigrationProgress? {
     return net.runGetMethod(self.address, "get_migration_data");
+}
+
+fun BondingCurveV2.getBuybackAddress(self): address? {
+    return net.runGetMethod(self.address, "get_buyback_address");
 }
