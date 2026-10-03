@@ -2,78 +2,54 @@
 
 # bonding-curve-contracts
 
-**TON token launchpad with a bonding curve and automatic migration to DeDust CPMM v2.**
-
-[![Version](https://img.shields.io/badge/version-v1.0.0-0098EA)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-132%2F132%20passing-brightgreen)](./tests)
+[![Version](https://img.shields.io/badge/version-V2%20in%20development-0098EA)](./CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/V2%20tests-42%20passing-brightgreen)](./tests/v2)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 </div>
 
 > The contracts have not been independently audited or validated on live mainnet at full scale.
 
-Anyone can launch a token. Users buy and sell on an `x*y=k` curve. At 2,000 TON of real reserves, the curve automatically seeds a DeDust pool and locks its initial liquidity. The creator can claim their share of the pool's trading fees.
+TON token launchpad with a bonding curve and automatic migration to DeDust CPMM v2. Initial liquidity is fully locked.
 
-## Run
+## Launch options
 
-Requires [Acton 1.2.0](https://ton-blockchain.github.io/acton/) and Python 3.9+ for the market runner.
+| Option              | Choices                                              |
+| ------------------- | ---------------------------------------------------- |
+| Supply              | 100M / 1B / 10B tokens                               |
+| Migration threshold | 1,000 / 2,000 / 3,000 TON                            |
+| Creator fee         | 0 / 0.1 / 0.5 / 1 / 2%                               |
+| Fee destination     | Up to 8 wallets with fixed shares, or buyback & burn |
+| Buy limits          | Optional minimum and maximum, in % of initial supply |
 
-```sh
-acton build
-acton test
-acton run market-quick       # 10 traders, 200 requests, migration and claims
-acton run market-campaign    # 20 seeds, 50 traders, 10,000 requests
-```
+An optional dev buy completes before public trading opens. Launch settings are fixed; contracts cannot be upgraded.
 
-The first market run downloads the DeDust libraries and verifies their hashes. Reports and traces are saved in `build/market-simulation/`. CI runs the quick scenario and saves its reports.
+On the curve, the protocol charges 1% in addition to the creator fee. Migration costs 20 TON, paid after liquidity is confirmed. DeDust fees also include LP and protocol shares; exact rates are available through `get_fee_rates`.
 
-## Contracts V1
+Buyback mode collects the creator share, buys tokens after migration and burns them to reduce supply. Anyone can trigger it. Swaps allow 3% slippage against a pool quote valid for 60 seconds.
 
-| Contract | Role |
-| --- | --- |
-| [BondingCurveMaster](contracts/v1/BondingCurveMaster.tolk) | Creates launches and manages protocol fees and treasury. |
-| [BondingCurve](contracts/v1/BondingCurve.tolk) | Handles buys, sells and migration to DeDust. |
-| [JettonMinter](contracts/v1/JettonMinter.tolk) | Mints the initial supply, then drops its admin. |
-| [JettonWallet](contracts/v1/JettonWallet.tolk) | Handles token transfers and burns. |
+## Tests
 
-The jetton wallet is an unmodified copy of [TON Core’s reference](https://github.com/ton-blockchain/acton-contracts/blob/d721c3179696b453a9490fcfd2f30770f8c234b4/jetton-v2.1/contracts/JettonWallet.tolk), using this project’s shared helpers. Its source pin and checksum are in [JettonWallet.upstream.json](contracts/v1/JettonWallet.upstream.json).
+Validated with Acton 1.2.0:
 
-Migration deploys the pool, resolves its jetton wallet, then deposits TON and tokens. The initial LP position is fully locked.
+- **42 V2 tests** covering launches, trades, fees, refunds and buyback & burn.
+- **543 migration simulations** on mainnet fork **96720714**, using real DeDust libraries.
+- **2 migration completion checks**: normal flow and concurrent confirmations, verifying locked liquidity and a single migration fee.
+- Buyback tested across **12 supply/fee combinations**, locally and on the same fork.
 
-## Parameters
+All executions were emulated; no real funds were spent. [Commands and results](tests/README.md).
 
-| Parameter | Value |
-| --- | --- |
-| Initial supply | 1 billion tokens, 9 decimals |
-| Virtual TON reserve | 400 TON |
-| Migration threshold | 2,000 TON in real reserves |
-| Curve buy/sell fee | 1% |
-| Launch fee | 0.2 TON |
-| Migration fee | 20 TON |
+## Development
 
-Tokenomics are defined in [bonding-config.tolk](contracts/v1/bonding-config.tolk). Pool configuration and fee settings are in [bonding-dedust.tolk](contracts/v1/bonding-dedust.tolk). The token amount deposited at migration is calculated from the curve's final reserves.
-
-## Test
-
-**132/132 tests pass.** The V1 campaign passed all 20 simulation seeds. The market campaign used 50 traders per seed, with up to five message chains interleaved:
-
-- **10,000 buy/sell requests** and **60,461 transactions**.
-- **20 migrations** and **260 DeDust swaps**.
-- **420 creator claims**, including empty and duplicate claims, and **60 protocol withdrawals**.
-
-The tests checked balances, actual payouts, fees, slippage, unauthorized claims and locked liquidity. Two replays produced identical metrics and logical schedule hashes. The quick scenario also passed on mainnet fork block **95930979**.
-
-These runs executed the contracts and real DeDust libraries in the Acton emulator. No real funds were spent. See [commands and replay instructions](docs/MARKET_SIMULATION.md).
-
-## V2
-
-Separate contracts in [contracts/v2](contracts/v2/): supply and creator-fee presets, dev buy before public trading, fee sharing and confirmed migration. V1's reference wallet is unchanged; V2 adds delivery confirmations.
+Requires [Acton 1.2.0](https://ton-blockchain.github.io/acton/) and Python 3.9+.
 
 ```sh
+acton build BondingCurveMasterV2
+python3 scripts/shared/run-market-simulation.py v2 --prepare-only
 acton test tests/v2
-acton run v2-simulation      # 60 preset scenarios and 2 finalization checks
+acton run v2-simulation
 ```
 
-The latest retained V2 run is a local simulation. Reports are saved in `build/market-simulation/`. No V2 deployment has been performed.
+[Contracts](contracts/v2/)  [Tests](tests/v2/)  [Scripts](scripts/v2/)  [Contributing](CONTRIBUTING.md) [Changelog](CHANGELOG.md)  [MIT license](LICENSE)
 
-[Changelog](CHANGELOG.md) · [MIT license](LICENSE)
+Documentation: [V2 guide](docs/v2/README.md) | [V1 reference](docs/v1/README.md).

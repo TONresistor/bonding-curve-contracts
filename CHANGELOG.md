@@ -7,9 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/
 
 ## [Unreleased]
 
-- V2: dev buy, supply/fee presets, configurable curves and optional buy limits.
-- Shared curve/DeDust fee manager with up to 8 fixed beneficiaries.
-- Confirmed migration, recovery flows, 143 tests and 540 migration simulations.
+- V2: dev buy, supply/fee presets, configurable curves and optional buy limits in % of initial supply.
+- Shared curve/DeDust fee manager: up to 8 fixed beneficiaries or permissionless buyback & burn.
+- Confirmed migration, delivery receipts and token returns for underfunded or malformed sells.
+- 164 tests, 543 migration simulations and 2 finalization checks.
 
 ## [1.0.0] (2026-05-19)
 
