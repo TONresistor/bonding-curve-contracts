@@ -1,4 +1,5 @@
 import "@stdlib/gas-payments"
+import "wallet-fees"
 // Derived from the pinned reference in ../v1/JettonWallet.upstream.json.
 import "wallet-messages"
 import "wallet-storage"
@@ -130,7 +131,7 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 msg.transferRecipient.getWorkchain() == MY_WORKCHAIN
             ) throw ERROR_WRONG_WORKCHAIN;
-            checkAmountIsEnoughToTransfer(
+            checkWalletTransferBudget(
                 in.valueCoins,
                 msg.forwardTonAmount,
                 in.originalForwardFee,
@@ -169,7 +170,7 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 msg.transferRecipient.getWorkchain() == MY_WORKCHAIN
             ) throw ERROR_WRONG_WORKCHAIN;
-            checkAmountIsEnoughToTransfer(
+            checkWalletTransferBudget(
                 in.valueCoins,
                 msg.forwardTonAmount + ton("0.01"),
                 in.originalForwardFee,
@@ -337,7 +338,7 @@ fun receiveTokens(
         val toLeaveOnBalance = contract.getOriginalBalance() - value +
             contract.getStorageDuePayment();
         reserveGramsOnBalance(
-            max(toLeaveOnBalance, calculateJettonWalletMinStorageFee()),
+            max(toLeaveOnBalance, walletStorageReserve()),
             RESERVE_MODE_AT_MOST,
         );
 

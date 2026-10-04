@@ -69,3 +69,7 @@ struct (0xa0a0b05a) BurnFailed {
     queryId: uint64
     amount: coins
 }
+
+struct (0xa0a0b05b) MinterAdminDropped {
+    queryId: uint64
+}

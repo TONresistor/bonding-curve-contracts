@@ -117,6 +117,7 @@ fun onInternalMessage(in: InMessage) {
             }
 
             var storage = lazy MasterStorage.load();
+            assert (storage.treasury.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
 
             val curveAuto = calcDeployedBondingCurve(
                 contract.getAddress(),
@@ -233,6 +234,7 @@ fun onInternalMessage(in: InMessage) {
         ChangeTreasury => {
             var storage = lazy MasterStorage.load();
             assertSenderIsAdmin(in.senderAddress, storage.admin);
+            assert (msg.newTreasury.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
             storage.treasury = msg.newTreasury;
             storage.save();
         }
@@ -281,6 +283,7 @@ fun onInternalMessage(in: InMessage) {
         ReinitializeCurve => {
             val storage = lazy MasterStorage.load();
             assertSenderIsAdmin(in.senderAddress, storage.admin);
+            assert (storage.treasury.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
             assert (in.valueCoins > ton("0.5")) throw Errors.NotEnoughGas;
 
             val curveAuto = calcDeployedBondingCurve(

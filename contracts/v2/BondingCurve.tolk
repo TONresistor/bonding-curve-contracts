@@ -9,10 +9,10 @@ import "buyback-storage"
 import "collector-address"
 import "fee-addresses"
 import "fee-storage"
+import "wallet-fees"
 import "wallet-messages"
 import "../v1/bonding-config"
 import "../v1/errors"
-import "../v1/fees-management"
 import "../v1/jetton-utils"
 import "../v1/messages"
 import "../v1/sharding"
@@ -28,6 +28,7 @@ contract BondingCurveV2 {
 type AllowedMessageToCurve =
     | InitializeCurve
     | MintDelivered
+    | MinterAdminDropped
     | ReturnExcessesBack
     | LaunchMintFailed
     | ClaimCurveCreatorFees
@@ -70,6 +71,9 @@ fun onInternalMessage(in: InMessage) {
             var storage = lazy BondingCurveStorage.load();
             val config = storage.config.load();
             assert (in.senderAddress == config.master) throw Errors.NotOwner;
+            assert (
+                msg.protocolTreasury.getWorkchain() == MY_WORKCHAIN
+            ) throw Errors.WrongWorkchain;
             assert (storage.state == CURVE_STATE_INITIALIZING) throw Errors.InvalidOp;
             assert (storage.jettonMinter == null) throw Errors.InvalidOp;
 
@@ -106,6 +110,16 @@ fun onInternalMessage(in: InMessage) {
         }
 
         ReturnExcessesBack => {}
+        MinterAdminDropped => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                storage.jettonMinter != null && in.senderAddress == storage.jettonMinter!
+            ) throw Errors.NotOwner;
+            if (storage.dropAdminPending) {
+                storage.dropAdminPending = false;
+                storage.save();
+            }
+        }
         MintDelivered => {
             var storage = BondingCurveStorage.load();
             if (storage.state != CURVE_STATE_INITIALIZING || storage.jettonMinter == null) {
@@ -238,7 +252,7 @@ fun onInternalMessage(in: InMessage) {
                 body: transferBody,
             });
             // Reject underfunded delivery; reserve updates roll back on failure.
-            checkAmountIsEnoughToTransfer(
+            checkWalletTransferBudget(
                 CURVE_TRANSFER_VALUE,
                 CURVE_TRANSFER_NOTIFICATION,
                 outBuyMsg.estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY),
@@ -251,9 +265,11 @@ fun onInternalMessage(in: InMessage) {
                     buyer: in.senderAddress,
                     tonInNet,
                     jettonsOut,
-                    feeAccrued: feeTon,
+                    feeTon,
                     realTonReserve: storage.realTonReserve,
                     curveJettonBalance: storage.curveJettonBalance,
+                    tonInGross: tonIn,
+                    migrationStarted: crossedThreshold,
                 },
             });
             buyEventMsg.send(SEND_MODE_REGULAR);
@@ -339,7 +355,7 @@ fun onInternalMessage(in: InMessage) {
                         forwardPayload: emptyForwardPayload(),
                     };
 
-                    val refundValue = calcMinimalTransferAmount(
+                    val refundValue = minimumWalletTransferValue(
                         CURVE_TRANSFER_NOTIFICATION,
                         in.originalForwardFee,
                     ) +
@@ -425,7 +441,7 @@ fun onInternalMessage(in: InMessage) {
                         forwardTonAmount: CURVE_TRANSFER_NOTIFICATION,
                         forwardPayload: emptyForwardPayload(),
                     };
-                    val refundValue = calcMinimalTransferAmount(
+                    val refundValue = minimumWalletTransferValue(
                         CURVE_TRANSFER_NOTIFICATION,
                         in.originalForwardFee,
                     ) +
@@ -474,10 +490,11 @@ fun onInternalMessage(in: InMessage) {
                         body: SellEvent {
                             seller: initiator!,
                             jettonsIn: acceptedJettons,
-                            tonOut,
-                            feeAccrued: feeTon,
+                            tonOutNet: tonOut,
+                            feeTon,
                             realTonReserve: storage.realTonReserve,
                             curveJettonBalance: storage.curveJettonBalance,
+                            tonOutGross: tonOut + feeTon,
                         },
                     });
                     sellEventMsg.send(SEND_MODE_REGULAR);
@@ -494,7 +511,7 @@ fun onInternalMessage(in: InMessage) {
                     forwardTonAmount: CURVE_TRANSFER_NOTIFICATION,
                     forwardPayload: emptyForwardPayload(),
                 };
-                val refundValue = calcMinimalTransferAmount(
+                val refundValue = minimumWalletTransferValue(
                     CURVE_TRANSFER_NOTIFICATION,
                     in.originalForwardFee,
                 ) +
@@ -879,6 +896,10 @@ get fun get_state(): uint8 {
     return storage.state;
 }
 
+get fun get_launch_status(): LaunchStatus {
+    return launchStatus(BondingCurveStorage.load().state);
+}
+
 get fun get_quote_buy(tonIn: coins): coins {
     val storage = lazy BondingCurveStorage.load();
     val (out, _fee) = computeBuyOut(
@@ -962,6 +983,14 @@ fun finishLaunch(mutate storage: BondingCurveStorage) {
         )
             ? CURVE_STATE_FROZEN
             : CURVE_STATE_TRADING;
+        createExternalLogMessage({
+            dest: ExtOutLogBucket { topic: TOPIC_LAUNCH_INITIALIZED },
+            body: LaunchInitializedEvent {
+                status: launchStatus(storage.state),
+                realTonReserve: storage.realTonReserve,
+                curveJettonBalance: storage.curveJettonBalance,
+            },
+        }).send(SEND_MODE_REGULAR);
         val collector = curveCollector(storage);
         createMessage({ bounce: false, dest: collector, value: ton("0.15"), body: TopUpTons {} }).send(
             SEND_MODE_PAY_FEES_SEPARATELY,

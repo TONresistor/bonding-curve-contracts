@@ -41,6 +41,35 @@ const CURVE_STATE_GRADUATING: uint8 = 2
 const CURVE_STATE_MIGRATED: uint8 = 3
 const CURVE_STATE_FROZEN: uint8 = 4
 
+enum LaunchStatus: uint8 {
+    Initializing = 0
+    Trading = 1
+    Migrating = 2
+    Migrated = 3
+    Cancelled = 4
+}
+
+fun launchStatus(state: uint8): LaunchStatus {
+    if (state == CURVE_STATE_INITIALIZING) {
+        return LaunchStatus.Initializing;
+    }
+    if (state == CURVE_STATE_TRADING) {
+        return LaunchStatus.Trading;
+    }
+    if (state == CURVE_STATE_MIGRATED) {
+        return LaunchStatus.Migrated;
+    }
+    if (state == CURVE_STATE_CANCELLED) {
+        return LaunchStatus.Cancelled;
+    }
+    assert (
+        state == CURVE_STATE_FROZEN || state == CURVE_STATE_GRADUATING ||
+        state == CURVE_STATE_MIGRATION_RETRY ||
+        state == CURVE_STATE_AWAITING_LIQUIDITY
+    ) throw 49;
+    return LaunchStatus.Migrating;
+}
+
 struct MasterStorage {
     admin: address
     nextAdmin: address?

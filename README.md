@@ -3,7 +3,7 @@
 # bonding-curve-contracts
 
 [![Version](https://img.shields.io/badge/version-V2%20in%20development-0098EA)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/V2%20tests-42%20passing-brightgreen)](./tests/v2)
+[![Tests](https://img.shields.io/badge/V2%20tests-53%20passing-brightgreen)](./tests/v2)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 </div>
@@ -32,10 +32,10 @@ Buyback mode collects the creator share, buys tokens after migration and burns t
 
 Validated with Acton 1.2.0:
 
-- **42 V2 tests** covering launches, trades, fees, refunds and buyback & burn.
-- **543 migration simulations** on mainnet fork **96720714**, using real DeDust libraries.
+- **53 V2 tests** covering launches, lifecycle events, trades, fees, refunds and buyback & burn.
+- **543 local migration simulations**, using real DeDust libraries.
 - **2 migration completion checks**: normal flow and concurrent confirmations, verifying locked liquidity and a single migration fee.
-- Buyback tested across **12 supply/fee combinations**, locally and on the same fork.
+- Buyback tested across **12 supply/fee combinations** locally. A previous V2 baseline also passed the migration matrix and buyback tests on mainnet fork **96720714**.
 
 All executions were emulated; no real funds were spent. [Commands and results](tests/README.md).
 

@@ -1,8 +1,8 @@
 import "@gen/JettonWalletV2.code"
 import "bonding-messages"
+import "wallet-fees"
 import "wallet-messages"
 import "../v1/errors"
-import "../v1/fees-management"
 import "../v1/jetton-utils"
 import "../v1/messages"
 import "../v1/sharding"
@@ -143,7 +143,7 @@ fun onInternalMessage(in: InMessage) {
             assertSenderIsAdmin(in.senderAddress, storage.adminAddress);
             assert (in.senderAddress.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
             assert (msg.jettonAmount > 0 && msg.queryId == 1) throw Errors.InvalidMessage;
-            checkAmountIsEnoughToTransfer(msg.tonAmount, ton("0.05"), in.originalForwardFee);
+            checkWalletTransferBudget(msg.tonAmount, ton("0.05"), in.originalForwardFee);
             storage.totalSupply += msg.jettonAmount;
             storage.save();
             reserveToncoinsOnBalance(ton("0.01"), RESERVE_MODE_EXACT_AMOUNT);
@@ -173,7 +173,7 @@ fun onInternalMessage(in: InMessage) {
             val forwardTonAmount = internalTransferMsg.forwardTonAmount;
             internalTransferMsg.forwardPayload.checkIsCorrectTlbEither();
 
-            checkAmountIsEnoughToTransfer(msg.tonAmount, forwardTonAmount, in.originalForwardFee);
+            checkWalletTransferBudget(msg.tonAmount, forwardTonAmount, in.originalForwardFee);
 
             storage.totalSupply += internalTransferMsg.jettonAmount;
             storage.save();
@@ -214,10 +214,21 @@ fun onInternalMessage(in: InMessage) {
 
         DropMinterAdmin => {
             var storage = lazy MinterStorage.load();
-            assertSenderIsAdmin(in.senderAddress, storage.adminAddress);
-            storage.adminAddress = null;
-            storage.nextAdminAddress = null;
-            storage.save();
+            assert (in.valueCoins >= ton("0.01")) throw Errors.NotEnoughGas;
+            if (storage.adminAddress != null) {
+                assertSenderIsAdmin(in.senderAddress, storage.adminAddress);
+                storage.adminAddress = null;
+                storage.nextAdminAddress = null;
+                storage.save();
+            } else {
+                assert (storage.nextAdminAddress == null) throw Errors.InvalidOp;
+            }
+            createMessage({
+                bounce: false,
+                dest: in.senderAddress,
+                value: 0,
+                body: MinterAdminDropped { queryId: msg.queryId },
+            }).send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
         }
 
         ChangeMinterMetadata => {

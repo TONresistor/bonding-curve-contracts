@@ -1,7 +1,7 @@
 import "@gen/JettonWalletV2.code"
 import "fee-storage"
+import "wallet-fees"
 import "wallet-messages"
-import "../v1/fees-management"
 import "../v1/jetton-utils"
 import "../v1/messages"
 
@@ -104,7 +104,7 @@ fun onInternalMessage(in: InMessage) {
                         forwardTonAmount: notifyGas,
                         forwardPayload: beginCell().storeUint(0, 1).toSlice(),
                     } });
-                checkAmountIsEnoughToTransfer(
+                checkWalletTransferBudget(
                     tokenGas,
                     notifyGas,
                     out.estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY),

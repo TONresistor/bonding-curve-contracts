@@ -107,6 +107,13 @@ const TOPIC_BUY: int = 0xa0a0a011
 const TOPIC_SELL: int = 0xa0a0a020
 const TOPIC_GRADUATE: int = 0xa0a0a012
 const TOPIC_LAUNCH_CREATED: int = 0xa0a0a001
+const TOPIC_LAUNCH_INITIALIZED: int = 0xa0a0b070
+
+struct LaunchInitializedEvent {
+    status: LaunchStatus
+    realTonReserve: coins
+    curveJettonBalance: coins
+}
 
 const TOPIC_LAUNCH_ROLLED_BACK: int = 0xa0a0a007
 
@@ -114,18 +121,21 @@ struct BuyEvent {
     buyer: address
     tonInNet: coins
     jettonsOut: coins
-    feeAccrued: coins
+    feeTon: coins
     realTonReserve: coins
     curveJettonBalance: coins
+    tonInGross: coins
+    migrationStarted: bool
 }
 
 struct SellEvent {
     seller: address
     jettonsIn: coins
-    tonOut: coins
-    feeAccrued: coins
+    tonOutNet: coins
+    feeTon: coins
     realTonReserve: coins
     curveJettonBalance: coins
+    tonOutGross: coins
 }
 
 struct GraduateEvent {

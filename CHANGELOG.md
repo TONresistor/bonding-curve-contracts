@@ -10,7 +10,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/
 - V2: dev buy, supply/fee presets, configurable curves and optional buy limits in % of initial supply.
 - Shared curve/DeDust fee manager: up to 8 fixed beneficiaries or permissionless buyback & burn.
 - Confirmed migration, delivery receipts and token returns for underfunded or malformed sells.
-- 164 tests, 543 migration simulations and 2 finalization checks.
+- Launch initialization event, readable statuses, explicit gross/net trade logs and a migration-start flag.
+- Basechain-only protocol treasury, calibrated V2 wallet storage reserves and confirmed admin removal.
+- 53 V2 tests, 543 migration simulations and 2 finalization checks.
 
 ## [1.0.0] (2026-05-19)
 

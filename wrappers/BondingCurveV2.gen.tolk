@@ -89,6 +89,21 @@ fun BondingCurveV2.sendMintDelivered(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendMinterAdminDropped(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: MinterAdminDropped { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun BondingCurveV2.sendReturnExcessesBack(
     self,
     from: address,
@@ -382,6 +397,10 @@ fun BondingCurveV2.getCurveData(self): BondingCurveDataReply {
 
 fun BondingCurveV2.getState(self): uint8 {
     return net.runGetMethod(self.address, "get_state");
+}
+
+fun BondingCurveV2.getLaunchStatus(self): LaunchStatus {
+    return net.runGetMethod(self.address, "get_launch_status");
 }
 
 fun BondingCurveV2.getQuoteBuy(self, tonIn: coins): coins {
