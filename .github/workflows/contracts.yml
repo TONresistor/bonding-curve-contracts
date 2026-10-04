@@ -65,3 +65,35 @@ jobs:
           path: build/market-simulation/
           if-no-files-found: ignore
           retention-days: 14
+
+  sdk:
+    name: SDK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - name: Setup Acton
+        uses: ton-blockchain/setup-acton@2d38fd579e1bf8753a3e0cff9ad695612b98a676
+      - name: Install SDK dependencies
+        run: npm ci --prefix sdk
+      - name: Check generated wrappers
+        run: npm run check:wrappers --prefix sdk
+      - name: SDK formatting
+        run: npm run format:check --prefix sdk
+      - name: Prepare SDK DeDust libraries
+        run: python3 scripts/shared/run-market-simulation.py v2 --prepare-only
+      - name: Test SDK
+        run: npm test --prefix sdk
+      - name: Check package
+        working-directory: sdk
+        run: npm pack --dry-run

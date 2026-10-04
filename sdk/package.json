@@ -1,0 +1,47 @@
+{
+  "name": "@tonresistor/bonding-curve-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for bonding curve V2 contracts",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./contracts/*": {
+      "types": "./dist/generated/*.gen.d.ts",
+      "default": "./dist/generated/*.gen.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/prepare.mjs && tsc -p tsconfig.json",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test test/*.test.mjs",
+    "prepack": "npm run build",
+    "check:wrappers": "node scripts/check-wrappers.mjs",
+    "format": "prettier --write src scripts test *.json",
+    "format:check": "prettier --check src scripts test *.json"
+  },
+  "peerDependencies": {
+    "@ton/core": "^0.63.1"
+  },
+  "devDependencies": {
+    "@ton/core": "0.63.1",
+    "@types/node": "^22.0.0",
+    "prettier": "3.6.2",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TONresistor/bonding-curve-contracts.git",
+    "directory": "sdk"
+  }
+}

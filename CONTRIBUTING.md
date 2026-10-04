@@ -23,6 +23,19 @@ acton run v2-simulation -- --offline
 
 The preparation command downloads pinned DeDust libraries for tests and simulations. Add `-- --offline` once cached. See [test instructions](tests/README.md) for replay and fork options. Broadcasting with `--net` spends real funds and requires explicit deployment approval.
 
+For SDK-only changes (contracts and ABI unchanged):
+
+```sh
+npm ci --prefix sdk
+npm run check:wrappers --prefix sdk
+npm run format:check --prefix sdk
+python3 scripts/shared/run-market-simulation.py v2 --prepare-only
+npm test --prefix sdk
+(cd sdk && npm pack --dry-run)
+```
+
+Requires Node.js 22+. The SDK job runs these checks separately from contract simulations.
+
 ## Changes
 
 - Use typed Tolk storage, messages and maps. Test changed behavior, authorization, refunds and relevant message ordering.

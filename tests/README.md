@@ -39,3 +39,11 @@ acton run market-replay -- --seed 20260935 --operations 500 --actors 50 --offlin
 ```
 
 Historical run (2026-09-30): 120 tests and 20 seeds passed, covering 60,461 transactions and 20 migrations. [V1 documentation](../docs/v1/README.md).
+
+## SDK
+
+Prepare the pinned DeDust libraries once with `python3 scripts/shared/run-market-simulation.py v2 --prepare-only`.
+`npm ci --prefix sdk && npm test --prefix sdk` builds TypeScript and runs 15 tests plus type checks.
+Acton verifies 159 payload hashes, including all 135 launch presets and the operation helpers.
+Tests cover access to every ABI method across the seven contracts, metadata, StateInit, gas, slippage and TON Connect.
+Two targeted E2E tests execute SDK transactions in Acton: launch/buy/sell/claim, and migration/buyback/burn with real DeDust libraries. They check token balances, TON payouts and supply reduction; no network transactions are sent.

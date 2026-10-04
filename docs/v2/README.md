@@ -51,3 +51,44 @@ acton script scripts/v2/buyback.tolk WALLET CURVE_ADDRESS STEP
 Steps: **1** prepare/activate after migration, **2** claim fees, **3** buy and burn, **4** retry burn, **0** inspect state. Anyone can trigger them.
 
 Scripts run locally by default. `--net mainnet` broadcasts real transactions.
+
+## SDK
+
+Build with `npm ci --prefix sdk && npm run build --prefix sdk` (Node.js 22+).
+Install from another project with `npm install /absolute/path/to/bonding-curve-contracts/sdk @ton/core`.
+The npm package is not published yet.
+
+```ts
+import { LaunchpadV2, toTonConnect } from '@tonresistor/bonding-curve-sdk';
+
+const sdk = new LaunchpadV2(address => tonClient.provider(address));
+const rates = await sdk.curve(curveAddress).getFeeRates();
+const { transaction } = await sdk.prepareBuy(curveAddress, 1_000_000_000n, 300);
+await tonConnectUI.sendTransaction(toTonConnect(transaction, {
+  validUntil: Math.floor(Date.now() / 1000) + 300,
+  network: '-239',
+  from: connectedWalletAddress,
+}));
+```
+
+Your app supplies the RPC client, connected wallet and parsed addresses. Browser builds need the Buffer support required by `@ton/core`.
+
+| API | Coverage |
+| --- | --- |
+| `sdk.master/curve/minter/wallet/collector/splitter/buyback(address)` | All generated getters and `send*` methods, with the provider bound |
+| `client.messages.messageName(value, body)` | Every ABI message as a transaction, without sending; explicit gas budget |
+| `contractMessages(ContractClass, address)` | Same builders without an RPC provider |
+| `createLaunch`, `prepareBuy`, `prepareSell`, `buy`, `sell` | Launch and trading helpers |
+| `flushCreatorFees`, `collectPoolFees`, `sweepCollectedTokens`, `retryCollectedFees`, `claimFees` | Fee collection, recovery and individual claims |
+| `prepareBuyback`, `claimBuybackFees`, `executeBuyback`, `burnAvailable` | Buyback and burn |
+| `flushFees`, `graduate`, `retryMigration`, `confirmMigration` | Protocol fees and migration |
+| `changeMasterAdmin`, `claimMasterAdmin`, `changeTreasury`, `withdrawProtocolFees`, `reinitializeCurve` | Master administration |
+| `transferTokens`, `burnTokens`, `deployMaster`, `deployment` | Jetton operations and deployment payloads with StateInit |
+
+For example, `sdk.collector(address).messages.retryCollectedFees(50_000_000n, { queryId: 42n })` prepares the recovery message. Builders use the generated serializers; callback/admin messages still require the sender authorized by the contract. `reinitializeCurve` does not upgrade code.
+
+Amounts are bigint nano-units, except launch `supplyTokens` and `graduationTon` in whole units. Rates and slippage use bps; beneficiary shares sum to 10,000. Buys attach gross TON plus 0.05 TON. Sells target the owner's jetton wallet with at least 0.2 TON forwarded and 0.2 TON wallet gas. Generic builders require an explicit total message value. These budgets are not live fee estimates.
+
+Fee collection and claims are separate transactions; verify each outcome before the next step. Wallet submission is not delivery confirmation. Quotes do not reserve a price or bypass buy limits; sells above `getMaxSafeSell` can return excess tokens. Buyback slippage remains enforced by the contract.
+
+`sdk.minter(address).getJettonData()` returns `jettonContent` as a raw Cell for both metadata formats ([TEP-74](https://github.com/ton-blockchain/TEPs/blob/master/text/0074-jettons-standard.md)). Other getters retain generated return types. All bindings and event decoders remain available under `@tonresistor/bonding-curve-sdk/contracts/<ContractName>`. No keys, endpoint or deployed address are bundled.
