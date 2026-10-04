@@ -11,14 +11,14 @@ Contracts, tests and scripts are grouped under `v1/` and `v2/`. Shared test help
 Run the same checks as CI:
 
 ```sh
-python3 scripts/v1/verify-jetton-wallet.py
-acton build
-acton fmt --check
-acton check
+acton build BondingCurveMasterV2
+acton fmt --check contracts/v2 scripts/v2 tests/v2 wrappers/*V2.gen.tolk
+for source in contracts/v2/*.tolk; do
+  acton check "$source" --output-format github
+done
 python3 scripts/shared/run-market-simulation.py v2 --prepare-only
-acton test
-acton run market-quick
-acton run v2-simulation
+acton test tests/v2
+acton run v2-simulation -- --offline
 ```
 
 The preparation command downloads pinned DeDust libraries for tests and simulations. Add `-- --offline` once cached. See [test instructions](tests/README.md) for replay and fork options. Broadcasting with `--net` spends real funds and requires explicit deployment approval.

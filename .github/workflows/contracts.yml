@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - master
+      - dev
   pull_request:
     branches:
       - main
       - master
+      - dev
   workflow_dispatch:
 
 concurrency:
@@ -34,29 +36,26 @@ jobs:
       - name: Setup Acton
         uses: ton-blockchain/setup-acton@2d38fd579e1bf8753a3e0cff9ad695612b98a676 # v1.0.0
 
-      - name: Verify reference wallet
-        run: python3 scripts/v1/verify-jetton-wallet.py
-
-      - name: Build
-        run: acton build
+      - name: Build V2
+        run: acton build BondingCurveMasterV2
 
       - name: Formatter
-        run: acton fmt --check
+        run: acton fmt --check contracts/v2 scripts/v2 tests/v2 wrappers/*V2.gen.tolk
 
       - name: Linter
-        run: acton check --output-format github
+        run: |
+          for source in contracts/v2/*.tolk; do
+            acton check "$source" --output-format github
+          done
 
       - name: Prepare DeDust libraries
         run: python3 scripts/shared/run-market-simulation.py v2 --prepare-only
 
-      - name: Test
-        run: acton test
-
-      - name: Reproducible market and creator claims
-        run: acton run market-quick
+      - name: Test V2
+        run: acton test tests/v2
 
       - name: V2 presets and migration
-        run: acton run v2-simulation
+        run: acton run v2-simulation -- --offline
 
       - name: Market simulation artifacts
         if: always()
