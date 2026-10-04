@@ -1,0 +1,3 @@
+src/generated/
+test/*.tolk
+package-lock.json

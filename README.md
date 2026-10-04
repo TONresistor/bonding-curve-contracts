@@ -39,6 +39,11 @@ Validated with Acton 1.2.0:
 
 All executions were emulated; no real funds were spent. [Commands and results](tests/README.md).
 
+## SDK
+
+TypeScript helpers for launches, quotes, trades, fee claims and buyback live in [`sdk/`](sdk/).
+They reuse Acton wrappers and prepare transactions for TON Connect or a backend sender. [Usage](docs/v2/README.md#sdk).
+
 ## Development
 
 Requires [Acton 1.2.0](https://ton-blockchain.github.io/acton/) and Python 3.9+.
