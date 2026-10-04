@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), 'bonding-sdk-'));
 try {
+  execFileSync('acton', ['build', 'BondingCurveMasterV2'], { cwd: repo, stdio: 'inherit' });
   for (const file of await readdir(join(repo, 'wrappers-ts'))) {
     if (!file.endsWith('V2.gen.ts')) continue;
     const contract = file.replace('.gen.ts', '');
