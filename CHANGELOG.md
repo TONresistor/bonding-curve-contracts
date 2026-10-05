@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/
 
 ## [Unreleased]
 
+- SDK 0.1.1: reduce the default sell budget from 0.4 to 0.25 TON.
+
 - V2 TypeScript SDK: all contract methods, transaction builders, admin/jetton helpers and TON Connect.
 
 - V2: dev buy, supply/fee presets, configurable curves and optional buy limits in % of initial supply.

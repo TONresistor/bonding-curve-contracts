@@ -4,6 +4,8 @@ import { AskToTransfer, PayloadInline } from '../generated/JettonWalletV2.gen.js
 import { basechain, coins } from '../validation.js';
 import { query, queryOperation, transaction, Transaction } from '../transport.js';
 
+const SELL_WALLET_GAS = 50_000_000n;
+
 export function buy(
   curve: Address,
   tonInGross: bigint,
@@ -38,7 +40,7 @@ export function sell(args: {
     minTonOut,
     queryId = 0n,
     forwardTonAmount = 200_000_000n,
-    walletGas = 200_000_000n,
+    walletGas = SELL_WALLET_GAS,
   } = args;
   coins(tokenAmount, 'token amount');
   coins(minTonOut, 'minimum TON');
@@ -48,7 +50,7 @@ export function sell(args: {
     tokenAmount === 0n ||
     minTonOut === 0n ||
     forwardTonAmount < 200_000_000n ||
-    walletGas < 200_000_000n
+    walletGas < SELL_WALLET_GAS
   )
     throw new Error('Invalid sell amount or gas budget');
   const payload = beginCell()

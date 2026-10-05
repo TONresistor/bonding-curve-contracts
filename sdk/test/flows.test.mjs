@@ -32,7 +32,7 @@ for (const buybackBurn of [false, true]) {
   test(
     buybackBurn
       ? 'SDK E2E: migration and permissionless buyback burn'
-      : 'SDK E2E: dev buy, public buy, sell and creator claim',
+      : 'SDK E2E: dev buy, public buy, sell, slippage refund and creator claim',
     () => {
       const config = {
         supplyTokens: 1_000_000_000,
@@ -55,6 +55,13 @@ for (const buybackBurn of [false, true]) {
           sdk.flushCreatorFees(address('curve')),
           sdk.claimBuybackFees(address('burner')),
           sdk.executeBuyback(address('burner')),
+          sdk.sell({
+            jettonWallet: address('creatorWallet'),
+            curve: address('curve'),
+            owner: address('creator'),
+            tokenAmount: 1_000_000n * sdk.NANO,
+            minTonOut: 1n,
+          }),
         );
       } else {
         transactions.push(
@@ -72,6 +79,13 @@ for (const buybackBurn of [false, true]) {
           }),
           sdk.flushCreatorFees(address('curve')),
           sdk.claimFees(address('manager')),
+          sdk.sell({
+            jettonWallet: address('wallet'),
+            curve: address('curve'),
+            owner: address('buyer'),
+            tokenAmount: 1_000_000n * sdk.NANO,
+            minTonOut: 1000n * sdk.NANO,
+          }),
         );
       }
       assert.match(run(transactions, false), buybackBurn ? /SDK_BUYBACK_OK/ : /SDK_TRADING_OK/);

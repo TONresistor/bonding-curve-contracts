@@ -44,6 +44,24 @@ fun sendSdk(
     );
 }
 
+fun checkSellRefund(
+    messages: map<uint8, cell>,
+    owner: address,
+    curve: BondingCurveV2,
+    minter: JettonMinterV2,
+) {
+    val tokens = v2Tokens(minter, owner);
+    val state = curve.getCurveData();
+    val fees = curve.getLaunchProgress().creatorAccrued;
+    val returned = sendSdk(messages, 5, owner, minter.getWalletAddress(owner));
+    expect(returned).toHaveAllSuccessfulTxs();
+    expect(v2Tokens(minter, owner)).toEqual(tokens);
+    expect(curve.getCurveData().realTonReserve).toEqual(state.realTonReserve);
+    expect(curve.getCurveData().curveJettonBalance).toEqual(state.curveJettonBalance);
+    expect(curve.getCurveData().feeAccrued).toEqual(state.feeAccrued);
+    expect(curve.getLaunchProgress().creatorAccrued).toEqual(fees);
+}
+
 fun main(bundle: string, discover: bool) {
     loadV2Libraries();
     testing.setNow(V2_TIME);
@@ -70,6 +88,7 @@ fun main(bundle: string, discover: bool) {
         println("creator={}", creator);
         println("buyer={}", buyer);
         println("wallet={}", minter.getWalletAddress(buyer));
+        println("creatorWallet={}", minter.getWalletAddress(creator));
         println("manager={}", manager.address);
     }
     if (options.buybackBurn) {
@@ -91,6 +110,7 @@ fun main(bundle: string, discover: bool) {
         expect(v2Tokens(minter, burner.address)).toEqual(0);
         expect(state.availableTon).toEqual(0);
         expect(state.swap == null && state.burnId == 0).toEqual(true);
+        checkSellRefund(messages, creator, curve, minter);
         println("SDK_BUYBACK_OK");
         return;
     }
@@ -121,5 +141,6 @@ fun main(bundle: string, discover: bool) {
     v2Payout(claimed, manager.address, creator, fees);
     expect(manager.getFeeBalance(creator, false).tonAmount).toEqual(0);
     expect(minter.getJettonData().totalSupply).toEqual(options.supply);
+    checkSellRefund(messages, buyer, curve, minter);
     println("SDK_TRADING_OK");
 }

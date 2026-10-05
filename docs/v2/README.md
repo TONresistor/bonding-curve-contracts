@@ -55,8 +55,7 @@ Scripts run locally by default. `--net mainnet` broadcasts real transactions.
 ## SDK
 
 Build with `npm ci --prefix sdk && npm run build --prefix sdk` (Node.js 22+).
-Install from another project with `npm install /absolute/path/to/bonding-curve-contracts/sdk @ton/core`.
-The npm package is not published yet.
+Install with `npm install @tonresistor/bonding-curve-sdk @ton/core`.
 
 ```ts
 import { LaunchpadV2, toTonConnect } from '@tonresistor/bonding-curve-sdk';
@@ -87,7 +86,7 @@ Your app supplies the RPC client, connected wallet and parsed addresses. Browser
 
 For example, `sdk.collector(address).messages.retryCollectedFees(50_000_000n, { queryId: 42n })` prepares the recovery message. Builders use the generated serializers; callback/admin messages still require the sender authorized by the contract. `reinitializeCurve` does not upgrade code.
 
-Amounts are bigint nano-units, except launch `supplyTokens` and `graduationTon` in whole units. Rates and slippage use bps; beneficiary shares sum to 10,000. Buys attach gross TON plus 0.05 TON. Sells target the owner's jetton wallet with at least 0.2 TON forwarded and 0.2 TON wallet gas. Generic builders require an explicit total message value. These budgets are not live fee estimates.
+Amounts are bigint nano-units, except launch `supplyTokens` and `graduationTon` in whole units. Rates and slippage use bps; beneficiary shares sum to 10,000. Buys attach gross TON plus 0.05 TON. Sells target the owner's jetton wallet with at least 0.2 TON forwarded and 0.05 TON wallet gas (0.25 TON total by default). Generic builders require an explicit total message value. These budgets are not live fee estimates.
 
 Fee collection and claims are separate transactions; verify each outcome before the next step. Wallet submission is not delivery confirmation. Quotes do not reserve a price or bypass buy limits; sells above `getMaxSafeSell` can return excess tokens. Buyback slippage remains enforced by the contract.
 
