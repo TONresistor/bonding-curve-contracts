@@ -1,8 +1,16 @@
 {
   "name": "@tonresistor/bonding-curve-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for bonding curve V2 contracts",
   "license": "MIT",
+  "homepage": "https://github.com/TONresistor/bonding-curve-contracts/blob/main/docs/v2/README.md#sdk",
+  "bugs": {
+    "url": "https://github.com/TONresistor/bonding-curve-contracts/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -41,7 +49,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/TONresistor/bonding-curve-contracts.git",
+    "url": "git+https://github.com/TONresistor/bonding-curve-contracts.git",
     "directory": "sdk"
   }
 }

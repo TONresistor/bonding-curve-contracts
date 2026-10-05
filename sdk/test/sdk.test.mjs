@@ -153,9 +153,12 @@ test('reject invalid presets, shares, limits and integer amounts', () => {
 
 test('gas and sell routing stay separate from trading amounts', () => {
   assert.equal(sdk.buy(curve, sdk.NANO, 1n).value, 1_050_000_000n);
-  const tx = sdk.sell({ jettonWallet: wallet, owner, curve, tokenAmount: 123n, minTonOut: 456n });
+  const args = { jettonWallet: wallet, owner, curve, tokenAmount: 123n, minTonOut: 456n };
+  const tx = sdk.sell(args);
   assert.ok(tx.to.equals(wallet));
-  assert.equal(tx.value, 400_000_000n);
+  assert.equal(tx.value, 250_000_000n);
+  assert.throws(() => sdk.sell({ ...args, walletGas: 49_999_999n }));
+  assert.equal(sdk.sell({ ...args, walletGas: 100_000_000n }).value, 300_000_000n);
   const body = AskToTransfer.fromSlice(tx.body.beginParse());
   assert.ok(body.transferRecipient.equals(curve));
   assert.ok(body.sendExcessesTo.equals(owner));
@@ -255,7 +258,7 @@ test('prepareSell resolves the owner wallet and reads the curve notification bud
   };
   const prepared = await client.prepareSell(curve, owner, 123n, 300);
   assert.ok(prepared.transaction.to.equals(wallet));
-  assert.equal(prepared.transaction.value, 450_000_000n);
+  assert.equal(prepared.transaction.value, 300_000_000n);
   assert.equal(prepared.minOutput, 970n);
   assert.equal(
     AskToTransfer.fromSlice(prepared.transaction.body.beginParse()).forwardTonAmount,

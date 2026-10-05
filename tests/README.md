@@ -46,4 +46,4 @@ Prepare the pinned DeDust libraries once with `python3 scripts/shared/run-market
 `npm ci --prefix sdk && npm test --prefix sdk` builds TypeScript and runs 15 tests plus type checks.
 Acton verifies 159 payload hashes, including all 135 launch presets and the operation helpers.
 Tests cover access to every ABI method across the seven contracts, metadata, StateInit, gas, slippage and TON Connect.
-Two targeted E2E tests execute SDK transactions in Acton: launch/buy/sell/claim, and migration/buyback/burn with real DeDust libraries. They check token balances, TON payouts and supply reduction; no network transactions are sent.
+Two targeted E2E tests execute SDK transactions in Acton: launch/buy/sell/claim, and migration/buyback/burn with real DeDust libraries. They check token balances, TON payouts, supply reduction and sell refunds for slippage or a migrated curve with a 0.25 TON budget; no network transactions are sent.
