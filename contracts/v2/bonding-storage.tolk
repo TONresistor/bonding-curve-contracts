@@ -18,7 +18,7 @@ struct LaunchOptions {
     devBuyAmount: coins
     minDevTokens: coins
     graduationThreshold: coins = ton("2000")
-    reserveRatio: uint8 = 5
+    soldSupplyBps: uint16 = 8333
     minBuyBps: uint16 = 0
     maxBuyBps: uint16 = 0
     beneficiaries: Cell<FeeBeneficiaries>? = null
@@ -162,6 +162,8 @@ struct FeeRatesReply {
 }
 
 struct LaunchPreview {
+    minimumCreateValue: coins
+    migrationPrefund: coins
     minBuyTokens: coins
     maxBuyTokens: coins
     virtualTonReserve: coins

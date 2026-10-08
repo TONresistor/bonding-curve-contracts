@@ -39,7 +39,8 @@ fun launchScenario(supply: coins, fee: uint16, dev: coins, salt: uint64) {
     expect(minter.getJettonData().totalSupply).toEqual(supply);
     expect(minter.getJettonData().adminAddress).toEqual(null);
     val netDev = dev - dev / 100 - dev * fee / 10000;
-    val expectedDev = supply - ton("400") * supply / (ton("400") + netDev);
+    val expectedDev = supply -
+        state.virtualTonReserve * supply / (state.virtualTonReserve + netDev);
     expect(state.realTonReserve).toEqual(netDev);
     if (dev > 0) {
         val wallet = JettonWallet.fromAddress(minter.getWalletAddress(creator.address));

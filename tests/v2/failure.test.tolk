@@ -59,7 +59,7 @@ get fun `test v2: presets, slippage and gas rejected before launch`() {
         ),
     ).toHaveFailedTx<CreateLaunch>({ to: master.address, exitCode: 49 });
     o.minDevTokens = 0;
-    o.creatorFeeBps = 101;
+    o.creatorFeeBps = 1001;
     expect(
         master.sendCreateLaunch(
             owner.address,
@@ -71,7 +71,7 @@ get fun `test v2: presets, slippage and gas rejected before launch`() {
         ),
     ).toHaveFailedTx<CreateLaunch>({ to: master.address, exitCode: 49 });
     o.creatorFeeBps = 100;
-    o.supply = 123;
+    o.supply = 0;
     expect(
         master.sendCreateLaunch(
             owner.address,

@@ -100,25 +100,32 @@ def main():
         snapshot = ROOT / "build/market-simulation" / f"failure-{seed}.json"
         snapshot.unlink(missing_ok=True)
         start = time.monotonic()
+        batches = [(first, min(first + 89, 548)) for first in range(0, 549, 90)] if args.profile == "v2" else []
+        commands = [command + [str(first), str(last)] for first, last in batches] if batches else [command]
         with log.open("w") as stream:
-            result = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,
-                                    env={**os.environ, "NO_COLOR": "1"})
+            for batch_command in commands:
+                result = subprocess.run(batch_command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,
+                                        env={**os.environ, "NO_COLOR": "1"})
+                if result.returncode != 0:
+                    break
         contents = log.read_text()
         metrics = dict(re.findall(r"^METRIC (\w+) (\S+)$", contents, re.MULTILINE))
-        marker = "V2_MATRIX_PASS scenarios=540 presets=135 wallets=10" if args.profile == "v2" else "MARKET_PASS"
+        marker = "V2_BATCH_PASS" if args.profile == "v2" else "MARKET_PASS"
         passed = result.returncode == 0 and marker in contents and "MARKET_FAIL" not in contents
         if args.profile == "v2":
             cases = re.findall(r"^V2_PASS (.*)$", contents, re.MULTILINE)
-            metrics = {"scenarios": len(cases), "presets": 135, "migrations": len(cases), "cases": cases}
+            metrics = {"scenarios": len(cases), "presets": 135, "custom": 9, "migrations": len(cases), "cases": cases}
             finalizations = re.findall(r"^FINALIZATION_PASS mode=(\d+)$", contents, re.MULTILINE)
             metrics["finalization_checks"] = len(finalizations)
             limits = re.findall(r"^V2_LIMITS_PASS ratio=(\d+)", contents, re.MULTILINE)
             metrics["limit_checks"] = len(limits)
-            passed = passed and len(cases) == 540 and sorted(finalizations) == ["0", "1"]
+            completed_batches = re.findall(r"^V2_BATCH_PASS first=(\d+) last=(\d+)$", contents, re.MULTILINE)
+            passed = passed and completed_batches == [(str(first), str(last)) for first, last in batches]
+            passed = passed and len(cases) == 549 and sorted(finalizations) == ["0", "1"]
             passed = passed and sorted(limits) == ["3", "5", "8"]
         run = {"seed": seed, "passed": passed, "exit_code": result.returncode,
                "seconds": round(time.monotonic() - start, 3), "metrics": metrics,
-               "log": str(log.relative_to(ROOT)), "command": command,
+               "log": str(log.relative_to(ROOT)), "command": command, "commands": commands,
                "last_step": (re.findall(r"^STEP \d+ (\d+)", contents, re.MULTILINE) or [None])[-1],
                "snapshot": str(snapshot.relative_to(ROOT)) if snapshot.exists() else None}
         manifest["runs"].append(run)

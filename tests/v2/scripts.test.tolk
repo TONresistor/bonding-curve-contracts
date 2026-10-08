@@ -24,7 +24,7 @@ get fun `test v2: creation script passes all optional settings and beneficiaries
         0,
         0,
         1000,
-        8,
+        8889,
         10,
         100,
         [recipient],
@@ -38,14 +38,16 @@ get fun `test v2: creation script passes all optional settings and beneficiaries
         devBuyAmount: 0,
         minDevTokens: 0,
         graduationThreshold: ton("1000"),
-        reserveRatio: 8,
+        soldSupplyBps: 8889,
         minBuyBps: 10,
         maxBuyBps: 100,
         beneficiaries: FeeBeneficiaries { shares }.toCell(),
     };
     val curve = BondingCurveV2.fromAddress(master.getLaunchAddress(owner, 8400, o));
     expect(curve.getState()).toEqual(CURVE_STATE_TRADING);
-    expect(curve.getCurveData().virtualTonReserve).toEqual(ton("125"));
+    expect(curve.getCurveData().virtualTonReserve).toEqual(
+        o.graduationThreshold * (10000 - o.soldSupplyBps) / o.soldSupplyBps,
+    );
     expect(curve.getLaunchOptions().minBuyBps).toEqual(10);
     expect(curve.getLaunchOptions().maxBuyBps).toEqual(100);
     expect(FeeSplitterV2.fromAddress(curve.getFeeManagerAddress()).getBeneficiaries()).toEqual(
@@ -75,7 +77,7 @@ get fun `test v2: creation script enables the exclusive buyback mode`() {
         0,
         0,
         2000,
-        5,
+        8333,
         0,
         0,
         [],

@@ -138,6 +138,7 @@ fun v2MigrationScenario(
     rounds: int = 10,
     threshold: coins = ton("2000"),
     ratio: uint8 = 5,
+    soldSupplyBps: uint16 = 0,
 ) {
     val admin = testing.treasury("v2-protocol");
     val creator = testing.treasury("v2-creator");
@@ -165,7 +166,9 @@ fun v2MigrationScenario(
         devBuyAmount: dev,
         minDevTokens: 0,
         graduationThreshold: threshold,
-        reserveRatio: ratio,
+        soldSupplyBps: soldSupplyBps == 0
+            ? (ratio * 10000 + (ratio + 1) / 2) / (ratio + 1)
+            : soldSupplyBps,
         beneficiaries,
     };
     // Initialize fresh test accounts locally; forks retain the pinned chain config.
@@ -239,7 +242,10 @@ fun v2MigrationScenario(
         beginCell().endCell(),
         salt,
         options,
-        { value: dev + ton("1"), bounce: true },
+        {
+            value: max(dev + ton("1"), master.getLaunchPreview(options).minimumCreateValue),
+            bounce: true,
+        },
     );
     expect(launch).toHaveSuccessfulTx<CreateLaunch>({ to: master.address });
     val curve = BondingCurveV2.fromAddress(master.getLaunchAddress(creator.address, salt, options));
@@ -247,7 +253,7 @@ fun v2MigrationScenario(
     expect(minter.getJettonData().totalSupply).toEqual(supply);
     expect(minter.getJettonData().adminAddress).toEqual(null);
     val devNet = dev - dev / 100 - dev * fee / 10000;
-    val virtual = threshold / ratio;
+    val virtual = threshold * (10000 - options.soldSupplyBps) / options.soldSupplyBps;
     val devTokens = supply - virtual * supply / (virtual + devNet);
     expect(v2Tokens(minter, creator.address)).toEqual(devTokens);
     var expectedSeed: coins = 0;
@@ -553,7 +559,8 @@ fun simulatePercentageLimits(supply: coins, threshold: coins, ratio: uint8) {
     val master = BondingCurveMasterV2.fromStorage({ admin: owner, nextAdmin: null, treasury: owner, totalLaunches: 0, feesBalance: 0 });
     master.deploy(owner, { value: ton("2") });
     val beforeFees = master.getMasterData().feesBalance;
-    val virtual = threshold / ratio;
+    val sold = (ratio * 10000 + (ratio + 1) / 2) / (ratio + 1);
+    val virtual = threshold * (10000 - sold) / sold;
     val remaining = virtual * supply / (virtual + threshold);
     val minimum = (remaining - supply / 10) * 10000 / supply;
     val options = LaunchOptions {
@@ -562,7 +569,7 @@ fun simulatePercentageLimits(supply: coins, threshold: coins, ratio: uint8) {
         devBuyAmount: ton("100"),
         minDevTokens: 0,
         graduationThreshold: threshold,
-        reserveRatio: ratio,
+        soldSupplyBps: (ratio * 10000 + (ratio + 1) / 2) / (ratio + 1),
         minBuyBps: minimum,
         maxBuyBps: minimum + 1,
     };
@@ -618,7 +625,8 @@ fun simulatePercentageLimits(supply: coins, threshold: coins, ratio: uint8) {
     );
 }
 
-fun runV2Matrix(rounds: int = 10) {
+fun runV2Matrix(rounds: int = 10, first: int = 0, last: int = 548) {
+    assert (first >= 0 && first <= last && last < 549) throw 1000;
     assert (!net.isBroadcasting()) throw 1000;
     testing.setNow(V2_TIME);
     loadV2Libraries();
@@ -638,15 +646,17 @@ fun runV2Matrix(rounds: int = 10) {
                 repeat (3) {
                     var r = 0;
                     repeat (3) {
-                        v2MigrationScenario(
-                            supplies.get(a),
-                            fees.get(b),
-                            buys.get(d),
-                            id,
-                            rounds,
-                            thresholds.get(t),
-                            ratios.get(r),
-                        );
+                        if (id >= first && id <= last) {
+                            v2MigrationScenario(
+                                supplies.get(a),
+                                fees.get(b),
+                                buys.get(d),
+                                id,
+                                rounds,
+                                thresholds.get(t),
+                                ratios.get(r),
+                            );
+                        }
                         id += 1;
                         r += 1;
                     }
@@ -658,10 +668,35 @@ fun runV2Matrix(rounds: int = 10) {
         }
         a += 1;
     }
-    simulatePercentageLimits(supplies.get(0), ton("1000"), 3);
-    simulatePercentageLimits(supplies.get(1), ton("2000"), 5);
-    simulatePercentageLimits(supplies.get(2), ton("3000"), 8);
-    simulateFinalization(0);
-    simulateFinalization(1);
-    println("V2_MATRIX_PASS scenarios=540 presets=135 wallets=10");
+    val customThresholds: array<coins> = [ton("500"), ton("1234.56789"), ton("10000")];
+    val customSold: array<uint16> = [4500, 7654, 9500];
+    var t = 0;
+    repeat (3) {
+        var r = 0;
+        repeat (3) {
+            val caseId = 540 + t * 3 + r;
+            if (caseId >= first && caseId <= last) {
+                v2MigrationScenario(
+                    123456789000000000,
+                    r == 2 ? 1000 : 70,
+                    r == 1 ? customThresholds.get(t) * 2 : 0,
+                    10000 + t * 3 + r,
+                    rounds,
+                    customThresholds.get(t),
+                    5,
+                    customSold.get(r),
+                );
+            }
+            r += 1;
+        }
+        t += 1;
+    }
+    if (last == 548) {
+        simulatePercentageLimits(supplies.get(0), ton("1000"), 3);
+        simulatePercentageLimits(supplies.get(1), ton("2000"), 5);
+        simulatePercentageLimits(supplies.get(2), ton("3000"), 8);
+        simulateFinalization(0);
+        simulateFinalization(1);
+    }
+    println("V2_BATCH_PASS first={} last={}", first, last);
 }

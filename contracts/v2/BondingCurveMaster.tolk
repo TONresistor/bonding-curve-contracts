@@ -12,7 +12,7 @@ import "../v1/storage"
 
 contract BondingCurveMasterV2 {
     author: "bonding-curve-contracts"
-    version: "2.0.0"
+    version: "2.1.0"
     description: "Factory for bonding-curve launchpads on TON"
     storage: MasterStorage
     incomingMessages: AllowedMessageToMaster
@@ -44,19 +44,23 @@ fun calcDeployedBondingCurve(
     salt: uint64,
     options: Cell<LaunchOptions>,
 ): AutoDeployAddress {
+    val o = options.load();
+    val virtual = initialVirtualReserve(o);
+    val remaining = virtual * o.supply / (virtual + o.graduationThreshold);
     val config: LaunchConfig = {
         master,
         creator,
         salt,
-        curveSupply: options.load().supply * 9 / 10,
-        dexReserveSupply: options.load().supply / 10,
-        graduationThreshold: options.load().graduationThreshold,
+        curveSupply: o.supply - remaining,
+        dexReserveSupply: (o.graduationThreshold - MIGRATION_FEE) * remaining /
+            (virtual + o.graduationThreshold),
+        graduationThreshold: o.graduationThreshold,
         options,
     };
     val initStorage: BondingCurveStorage = {
         state: CURVE_STATE_INITIALIZING,
         jettonMinter: null,
-        virtualTonReserve: initialVirtualReserve(options.load()),
+        virtualTonReserve: virtual,
         realTonReserve: 0,
         curveJettonBalance: 0,
         feeAccrued: 0,
@@ -102,7 +106,7 @@ fun onInternalMessage(in: InMessage) {
             val options = msg.options.load();
             validateLaunchOptions(options);
             assert (in.senderAddress.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
-            assert (in.valueCoins >= options.devBuyAmount + ton("1")) throw Errors.NotEnoughGas;
+            assert (in.valueCoins >= minimumCreateValue(options)) throw Errors.NotEnoughGas;
             if (options.devBuyAmount > 0) {
                 val (devTokens, _) = computeBuyOut(
                     options.devBuyAmount,
@@ -406,5 +410,5 @@ get fun get_launch_preview(options: Cell<LaunchOptions>): LaunchPreview {
 }
 
 get fun get_version(): int {
-    return 0x020000;
+    return 0x020100;
 }

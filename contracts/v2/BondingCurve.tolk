@@ -19,7 +19,7 @@ import "../v1/sharding"
 
 contract BondingCurveV2 {
     author: "bonding-curve-contracts"
-    version: "2.0.0"
+    version: "2.1.0"
     description: "Per-launch x*y=k bonding curve. Holds fixed Jetton inventory, swaps TON<->Jetton."
     storage: BondingCurveStorage
     incomingMessages: AllowedMessageToCurve
@@ -80,6 +80,7 @@ fun onInternalMessage(in: InMessage) {
             val o = config.options.load();
             validateLaunchOptions(o);
             storage.jettonMinter = msg.jettonMinter;
+            storage.migrationReserve = initialMigrationReserve(o);
             var progress = storage.progress.load();
             progress.protocolTreasury = msg.protocolTreasury;
             if (o.devBuyAmount > 0) {
@@ -95,8 +96,12 @@ fun onInternalMessage(in: InMessage) {
                 storage.realTonReserve = o.devBuyAmount - fees;
                 progress.creatorAccrued = o.devBuyAmount * o.creatorFeeBps / 10000;
                 val protocolFee = o.devBuyAmount * PROTOCOL_FEE_BPS / 10000;
-                storage.migrationReserve = min(protocolFee / 10, MIGRATION_RESERVE_TARGET);
-                storage.feeAccrued = protocolFee - storage.migrationReserve;
+                val cut = min(
+                    protocolFee / 10,
+                    MIGRATION_RESERVE_TARGET - storage.migrationReserve,
+                );
+                storage.migrationReserve += cut;
+                storage.feeAccrued = protocolFee - cut;
             } else {
                 progress.devReceived = true;
             }
@@ -201,7 +206,12 @@ fun onInternalMessage(in: InMessage) {
             assert (jettonsOut >= msg.minJettonsOut) throw Errors.InvalidMessage;
 
             assert (
-                storage.curveJettonBalance - jettonsOut >= config.dexReserveSupply
+                hasMigrationLiquidity(
+                    storage.virtualTonReserve,
+                    storage.realTonReserve + tonIn - feeTon,
+                    storage.curveJettonBalance - jettonsOut,
+                    config.graduationThreshold,
+                )
             ) throw Errors.BalanceError;
 
             var progress = storage.progress.load();
@@ -943,7 +953,7 @@ get fun get_max_safe_sell(): coins {
 }
 
 get fun get_version(): int {
-    return 0x020000;
+    return 0x020100;
 }
 
 get fun get_progress_bps(): int {

@@ -8,6 +8,7 @@ import "@wrappers/BondingCurveV2.gen"
 import "@wrappers/JettonMinterV2.gen"
 import "@wrappers/JettonWallet.gen"
 import "@contracts/v1/messages"
+import "@contracts/v2/bonding-math"
 import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
 import "@contracts/v2/fee-storage"
@@ -25,13 +26,14 @@ fun optionsLaunch(
     o: LaunchOptions,
     salt: uint64,
 ): BondingCurveV2 {
+    val minimum = master.getLaunchPreview(o).minimumCreateValue;
     val launch = master.sendCreateLaunch(
         owner,
         1,
         beginCell().endCell(),
         salt,
         o,
-        { value: o.devBuyAmount + ton("1"), bounce: true },
+        { value: max(o.devBuyAmount + ton("1"), minimum), bounce: true },
     );
     expect(launch).toHaveSuccessfulTx<CreateLaunch>({ to: master.address });
     return BondingCurveV2.fromAddress(master.getLaunchAddress(owner, salt, o));
@@ -57,7 +59,7 @@ get fun `test v2: all 135 curve fee and supply configurations match preview`() {
     val supplies: array<coins> = [100000000000000000, 1000000000000000000, 10000000000000000000];
     val fees: array<uint16> = [0, 10, 50, 100, 200];
     val thresholds: array<coins> = [ton("1000"), ton("2000"), ton("3000")];
-    val ratios: array<uint8> = [3, 5, 8];
+    val soldShares: array<uint16> = [7500, 8333, 8889];
     var id: uint64 = 7000;
     var a = 0;
     repeat (3) {
@@ -73,12 +75,14 @@ get fun `test v2: all 135 curve fee and supply configurations match preview`() {
                         devBuyAmount: 0,
                         minDevTokens: 0,
                         graduationThreshold: thresholds.get(t),
-                        reserveRatio: ratios.get(r),
+                        soldSupplyBps: soldShares.get(r),
                     };
                     val preview = master.getLaunchPreview(o);
                     val curve = optionsLaunch(master, owner, o, id);
                     val data = curve.getCurveData();
-                    expect(data.virtualTonReserve).toEqual(o.graduationThreshold / o.reserveRatio);
+                    expect(data.virtualTonReserve).toEqual(
+                        o.graduationThreshold * (10000 - o.soldSupplyBps) / o.soldSupplyBps,
+                    );
                     expect(data.graduationThreshold).toEqual(o.graduationThreshold);
                     expect(curve.getState()).toEqual(CURVE_STATE_TRADING);
                     expect(curve.getProgressBps()).toEqual(0);
@@ -118,19 +122,22 @@ get fun `test v2: invalid curve limits and beneficiary configurations reject bef
         devBuyAmount: 0,
         minDevTokens: 0,
     };
-    o.graduationThreshold = ton("999");
+    o.graduationThreshold = ton("20");
     invalidOptions(master, owner, o, 8000);
     o.graduationThreshold = ton("2000");
-    o.reserveRatio = 4;
+    o.soldSupplyBps = 0;
     invalidOptions(master, owner, o, 8001);
-    o.reserveRatio = 8;
-    o.minBuyBps = 112;
+    o.soldSupplyBps = 10000;
     invalidOptions(master, owner, o, 8002);
+    o.soldSupplyBps = 8333;
     o.minBuyBps = 200;
     o.maxBuyBps = 100;
     invalidOptions(master, owner, o, 8003);
     o.minBuyBps = 100;
     invalidOptions(master, owner, o, 8098);
+    var equalLimits = o;
+    equalLimits.supply = 10000;
+    expect(optionsLaunch(master, owner, equalLimits, 8100).getState()).toEqual(CURVE_STATE_TRADING);
     o.minBuyBps = 10001;
     o.maxBuyBps = 0;
     invalidOptions(master, owner, o, 8097);
@@ -323,5 +330,201 @@ get fun `test v2: supply percentage limits check delivered tokens for all supply
             b += 1;
         }
         a += 1;
+    }
+}
+
+get fun `test v2: economic and serialization bounds reject invalid configurations`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 1000000000000000000,
+        creatorFeeBps: 1000,
+        devBuyAmount: 0,
+        minDevTokens: 0,
+        graduationThreshold: ton("500"),
+        soldSupplyBps: 5000,
+    };
+    val preview = master.getLaunchPreview(o);
+    expect(preview.poolTon).toEqual(ton("480"));
+    expect(preview.poolTokens > 0).toEqual(true);
+    o.creatorFeeBps = 1001;
+    invalidOptions(master, owner, o, 8900);
+    o.creatorFeeBps = 0;
+    o.supply = 0;
+    invalidOptions(master, owner, o, 8901);
+    o.supply = 1;
+    invalidOptions(master, owner, o, 8902);
+    o.supply = 1000000000000000000;
+    o.graduationThreshold = (1 << 120) - 1;
+    o.soldSupplyBps = 1;
+    invalidOptions(master, owner, o, 8903);
+    o.graduationThreshold = ton("2000");
+    o.minBuyBps = 10000;
+    invalidOptions(master, owner, o, 8904);
+    o.supply = 10001;
+    o.soldSupplyBps = 5000;
+    o.minBuyBps = 1;
+    o.maxBuyBps = 1;
+    invalidOptions(master, owner, o, 8905);
+    o.supply = (1 << 120) - 1;
+    o.minBuyBps = 0;
+    o.maxBuyBps = 0;
+    val largest = master.getLaunchPreview(o);
+    expect(largest.soldTokens + largest.poolTokens + largest.remainingTokens).toEqual(o.supply);
+}
+
+get fun `test v2: custom supply sold percentage threshold and fees match preview`() {
+    val (master, owner) = optionsMaster();
+    val soldShares: array<uint16> = [1234, 5432, 9999];
+    val fees: array<uint16> = [30, 120, 1000];
+    var i = 0;
+    repeat (3) {
+        val o = LaunchOptions {
+            supply: 123456789000001,
+            creatorFeeBps: fees.get(i),
+            devBuyAmount: 0,
+            minDevTokens: 0,
+            graduationThreshold: ton("1234.56789"),
+            soldSupplyBps: soldShares.get(i),
+            minBuyBps: 1,
+            maxBuyBps: i == 2 ? 1000 : 137,
+        };
+        val preview = master.getLaunchPreview(o);
+        val curve = optionsLaunch(master, owner, o, 8950 + i);
+        expect(curve.getLaunchOptions().toCell().hash()).toEqual(o.toCell().hash());
+        expect(curve.getCurveData().virtualTonReserve).toEqual(preview.virtualTonReserve);
+        val remaining = o.supply - preview.soldTokens;
+        val x = preview.virtualTonReserve + o.graduationThreshold;
+        expect(preview.poolTokens).toEqual(preview.poolTon * remaining / x);
+        expect(preview.soldTokens + preview.poolTokens + preview.remainingTokens).toEqual(o.supply);
+        expect(preview.migrationPrefund).toEqual(0);
+        expect(preview.minimumCreateValue).toEqual(ton("1"));
+        expect(preview.minBuyTokens).toEqual((o.supply + 9999) / 10000);
+        expect(preview.maxBuyTokens).toEqual(o.supply * o.maxBuyBps / 10000);
+        expect(preview.graduationPriceNanoPerBillion).toEqual(x * 1000000000000000000 / remaining);
+        i += 1;
+    }
+}
+
+get fun `test v2: maximum buy accepts the minimum public input after dev buy`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 30000,
+        creatorFeeBps: 0,
+        devBuyAmount: 0,
+        minDevTokens: 0,
+        graduationThreshold: ton("2000"),
+        soldSupplyBps: 9999,
+        minBuyBps: 1,
+        maxBuyBps: 1,
+    };
+    invalidOptions(master, owner, o, 8960);
+    o.devBuyAmount = ton("1");
+    invalidOptions(master, owner, o, 8961);
+    o.devBuyAmount = ton("10");
+    val curve = optionsLaunch(master, owner, o, 8962);
+    expect(curve.getState()).toEqual(CURVE_STATE_TRADING);
+    expect(curve.getQuoteBuy(ton("0.01"))).toEqual(1);
+    val input = grossForTokens(curve, 3);
+    expect(curve.getQuoteBuy(input)).toEqual(3);
+    val buyer = testing.treasury("post-dev-minimum-buyer").address;
+    expect(
+        curve.sendBuyJettons(
+            buyer,
+            1,
+            3,
+            { value: input + ton("0.05"), bounce: true },
+        ),
+    ).toHaveSuccessfulTx<BuyJettons>({ to: curve.address });
+}
+
+get fun `test v2: tiny supply rounding cannot destroy future migration liquidity`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 6,
+        creatorFeeBps: 0,
+        devBuyAmount: 0,
+        minDevTokens: 0,
+        graduationThreshold: ton("2000"),
+        soldSupplyBps: 5000,
+    };
+    invalidOptions(master, owner, o, 8970);
+    expect(hasMigrationLiquidity(ton("2000"), ton("0.0099"), 5, ton("2000"))).toEqual(false);
+    expect(hasMigrationLiquidity(ton("2000"), ton("2000"), 3, ton("2000"))).toEqual(true);
+    o.supply = 100;
+    o.minBuyBps = 6000;
+    val curve = optionsLaunch(master, owner, o, 8971);
+    val input = minimumGrossForBuyTokens(60, ton("2000"), 100, 0);
+    expect(curve.getQuoteBuy(input)).toEqual(60);
+    val (out, fees) = computeBuyOut(input, ton("2000"), 0, 100, 0);
+    expect(input - fees >= o.graduationThreshold).toEqual(true);
+    expect(hasMigrationLiquidity(ton("2000"), input - fees, 100 - out, ton("2000"))).toEqual(true);
+}
+
+get fun `test v21: dev buy cannot exhaust supply or migration liquidity`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 10000,
+        creatorFeeBps: 0,
+        devBuyAmount: ton("2000000"),
+        minDevTokens: 0,
+        graduationThreshold: ton("500"),
+        soldSupplyBps: 6000,
+    };
+    invalidOptions(master, owner, o, 8980);
+    o.devBuyAmount = ton("10000000");
+    invalidOptions(master, owner, o, 8981);
+    o.devBuyAmount = ton("750");
+    val (tokens, fees) = computeBuyOut(o.devBuyAmount, initialVirtualReserve(o), 0, o.supply, 0);
+    expect(tokens < o.supply).toEqual(true);
+    expect(o.devBuyAmount - fees >= o.graduationThreshold).toEqual(true);
+    expect(master.getLaunchPreview(o).poolTokens > 0).toEqual(true);
+}
+
+get fun `test v21: migration thresholds accept inclusive 500 and 10000 bounds`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 1000000000000000000,
+        creatorFeeBps: 0,
+        devBuyAmount: 0,
+        minDevTokens: 0,
+        graduationThreshold: ton("500"),
+    };
+    o.graduationThreshold -= 1;
+    invalidOptions(master, owner, o, 8990);
+    o.graduationThreshold = ton("10000") + 1;
+    invalidOptions(master, owner, o, 8991);
+    o.graduationThreshold = ton("500");
+    expect(optionsLaunch(master, owner, o, 8992).getState()).toEqual(CURVE_STATE_TRADING);
+    o.graduationThreshold = ton("10000");
+    expect(optionsLaunch(master, owner, o, 8993).getState()).toEqual(CURVE_STATE_TRADING);
+}
+
+get fun `test v21: creator fees allow zero through ten percent in tenth percent steps`() {
+    val (master, owner) = optionsMaster();
+    var o = LaunchOptions {
+        supply: 1000000000000000000,
+        creatorFeeBps: 0,
+        devBuyAmount: 0,
+        minDevTokens: 0,
+    };
+    var rate: uint16 = 0;
+    repeat (101) {
+        o.creatorFeeBps = rate;
+        expect(master.getLaunchPreview(o).poolTokens > 0).toEqual(true);
+        rate += 10;
+    }
+    val invalid: array<uint16> = [
+        1,
+        9,
+        11,
+        999,
+        1001,
+        1010,
+    ];
+    var i = 0;
+    repeat (6) {
+        o.creatorFeeBps = invalid.get(i);
+        invalidOptions(master, owner, o, 9000 + i);
+        i += 1;
     }
 }
