@@ -2,8 +2,8 @@
 
 # bonding-curve-contracts
 
-[![Version](https://img.shields.io/badge/version-V2%20in%20development-0098EA)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/V2%20tests-53%20passing-brightgreen)](./tests/v2)
+[![Version](https://img.shields.io/badge/version-V2.1%20in%20development-0098EA)](./CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/V2%20tests-60%20passing-brightgreen)](./tests/v2)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 </div>
@@ -16,11 +16,13 @@ TON token launchpad with a bonding curve and automatic migration to DeDust CPMM 
 
 | Option              | Choices                                              |
 | ------------------- | ---------------------------------------------------- |
-| Supply              | 100M / 1B / 10B tokens                               |
-| Migration threshold | 1,000 / 2,000 / 3,000 TON                            |
-| Creator fee         | 0 / 0.1 / 0.5 / 1 / 2%                               |
+| Supply              | Custom token quantity                               |
+| Migration threshold | Custom amount from 500 to 10,000 TON                            |
+| Creator fee         | 0–10%, in 0.1% steps                               |
 | Fee destination     | Up to 8 wallets with fixed shares, or buyback & burn |
 | Buy limits          | Optional minimum and maximum, in % of initial supply |
+
+The sold share is configurable; the contract derives the virtual reserve and validates migration liquidity.
 
 An optional dev buy completes before public trading opens. Launch settings are fixed; contracts cannot be upgraded.
 
@@ -32,8 +34,8 @@ Buyback mode collects the creator share, buys tokens after migration and burns t
 
 Validated with Acton 1.2.0:
 
-- **53 V2 tests** covering launches, lifecycle events, trades, fees, refunds and buyback & burn.
-- **543 local migration simulations**, using real DeDust libraries.
+- **60 V2 tests** covering launches, lifecycle events, trades, fees, refunds and buyback & burn.
+- **552 local migration simulations**, using real DeDust libraries.
 - **2 migration completion checks**: normal flow and concurrent confirmations, verifying locked liquidity and a single migration fee.
 - Buyback tested across **12 supply/fee combinations** locally. A previous V2 baseline also passed the migration matrix and buyback tests on mainnet fork **96720714**.
 
@@ -41,7 +43,7 @@ All executions were emulated; no real funds were spent. [Commands and results](t
 
 ## SDK
 
-TypeScript helpers for launches, quotes, trades, fee claims and buyback live in [`sdk/`](sdk/).
+The published SDK 0.1.1 targets V2.0. V2.1 integration requires an SDK update. TypeScript helpers live in [`sdk/`](sdk/).
 They reuse Acton wrappers and prepare transactions for TON Connect or a backend sender. [Usage](docs/v2/README.md#sdk).
 
 ## Development

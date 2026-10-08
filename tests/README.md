@@ -11,7 +11,11 @@ acton test tests/v2
 acton run v2-simulation -- --offline
 ```
 
-**53 tests** cover launches, lifecycle events, trades, refunds, fees and buyback & burn. The local migration runner passed **540 preset scenarios**, **3 buy-limit migrations** and **2 completion checks** (normal flow and concurrent confirmations: locked LP, migration fee paid once).
+**60 tests** cover launches, lifecycle events, trades, refunds, fees and buyback & burn. The local migration runner passed **540 preset scenarios**, **9 custom configurations**, **3 buy-limit migrations** and **2 completion checks** (normal flow and concurrent confirmations: locked LP, migration fee paid once).
+
+V2.1 covers custom parameters and liquidity limits. Existing V2 failure/refund flows are preserved; no gas-refund system is added. Migration scenarios run in batches of 90 to bound emulator memory.
+
+Against commit `60447fd`, matching scenario sequences keep the same transaction counts. Gas: buyback -7.2%, launch/trade/claim +0.2%, trade-event scenarios +4.4%. Custom-parameter validation adds work; this is not an overall gas reduction on every flow.
 
 A previous V2 baseline passed the full migration matrix on mainnet fork **96720714**. Buyback's 12 supply/fee combinations also passed on that fork. Replay the matrix:
 

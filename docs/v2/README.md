@@ -1,4 +1,4 @@
-# V2
+# V2.1
 
 [Options and fees](../../README.md) | [Tests](../../tests/README.md) | [TypeScript wrappers](../../wrappers-ts/)
 
@@ -13,6 +13,8 @@ Run with `acton script <file> <args>` from the repository root. Arguments are de
 - [Buyback & burn](../../scripts/v2/buyback.tolk)
 
 For buys, use `sendBuyJettons` in the [curve wrapper](../../wrappers/BondingCurveV2.gen.tolk).
+
+Launch options use `soldSupplyBps` instead of `reserveRatio`. Contracts accept custom supply, thresholds and creator rates; see [V2.1 specs](../../SPECS-V2.1.md). The curve wallet exposes its network-dependent minimum sell notification.
 
 Amounts use nano-TON/nano-tokens; `supplyTokens` and `graduationTon` use whole units. Rates use bps: 100 = 1%.
 
@@ -52,7 +54,9 @@ Steps: **1** prepare/activate after migration, **2** claim fees, **3** buy and b
 
 Scripts run locally by default. `--net mainnet` broadcasts real transactions.
 
-## SDK
+## SDK (V2.0)
+
+The published SDK 0.1.1 targets V2.0. Its adaptation to V2.1 is outside this contract change; V2.1 changes the launch options ABI.
 
 Build with `npm ci --prefix sdk && npm run build --prefix sdk` (Node.js 22+).
 Install with `npm install @tonresistor/bonding-curve-sdk @ton/core`.

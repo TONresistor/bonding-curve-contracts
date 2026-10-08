@@ -7,6 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/
 
 ## [Unreleased]
 
+- V2.1: custom supply, migration threshold, sold share and creator fees, with liquidity validation.
+- V2.1: avoid unnecessary address derivations, storage writes and temporary fee dictionaries.
+
 - SDK 0.1.1: reduce the default sell budget from 0.4 to 0.25 TON.
 
 - V2 TypeScript SDK: all contract methods, transaction builders, admin/jetton helpers and TON Connect.
