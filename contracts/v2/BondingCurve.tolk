@@ -189,7 +189,7 @@ fun onInternalMessage(in: InMessage) {
                 storage.virtualTonReserve,
                 storage.realTonReserve,
                 storage.curveJettonBalance,
-                config.options.load().creatorFeeBps,
+                options.creatorFeeBps,
             );
 
             assert (jettonsOut > 0) throw Errors.BalanceError;
@@ -205,7 +205,7 @@ fun onInternalMessage(in: InMessage) {
             ) throw Errors.BalanceError;
 
             var progress = storage.progress.load();
-            val creatorFee = tonIn * config.options.load().creatorFeeBps / 10000;
+            val creatorFee = tonIn * options.creatorFeeBps / 10000;
             val protocolFee = tonIn * PROTOCOL_FEE_BPS / 10000;
             progress.creatorAccrued += creatorFee;
             storage.progress = progress.toCell();

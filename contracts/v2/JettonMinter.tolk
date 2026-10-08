@@ -10,7 +10,7 @@ import "../v1/storage"
 
 contract JettonMinterV2 {
     author: "Digital Resistance"
-    version: "2.0.0"
+    version: "2.1.0"
     description: "Standard Jetton Minter. TEP-74 and TEP-89 compliant"
     storage: MinterStorage
     incomingMessages: AllowedMessageToMinter
@@ -60,7 +60,7 @@ fun onInternalMessage(in: InMessage) {
 
     match (msg) {
         BurnNotificationTracked => {
-            var storage = MinterStorage.load();
+            var storage = lazy MinterStorage.load();
             assert (
                 in.senderAddress ==
                 calcAddressOfJettonWallet(

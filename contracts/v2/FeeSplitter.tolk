@@ -6,7 +6,7 @@ import "../v1/jetton-utils"
 import "../v1/messages"
 
 contract FeeSplitterV2 {
-    version: "2.0.0"
+    version: "2.1.0"
     storage: SplitterStorage
     incomingMessages: SplitterMessages
 }
@@ -29,11 +29,6 @@ fun onInternalMessage(in: InMessage) {
     var s = SplitterStorage.fromCell(contract.getData());
     val c = s.config.load();
     val r = c.recipients.load();
-    val wallet = calcAddressOfJettonWallet(
-        contract.getAddress(),
-        c.minter,
-        jettonWalletV2CompiledCode(),
-    );
     match (msg) {
         CreditNativeFees => {
             assert (in.senderAddress == c.collector && in.valueCoins >= msg.amount) throw 73;
@@ -49,7 +44,7 @@ fun onInternalMessage(in: InMessage) {
         }
         TransferNotificationForRecipient => {
             assert (
-                in.senderAddress == wallet && msg.transferInitiator != null &&
+                in.senderAddress == splitterWallet(c) && msg.transferInitiator != null &&
                 msg.transferInitiator! == c.collector
             ) throw 73;
             val protocol = msg.jettonAmount * 10 / (10 + r.creatorBps);
@@ -59,7 +54,11 @@ fun onInternalMessage(in: InMessage) {
         ClaimSplitFees => {
             val recipient = in.senderAddress;
             assert (
-                msg.protocol ? recipient == r.protocol : beneficiaryShares(r).exists(recipient)
+                msg.protocol
+                    ? recipient == r.protocol
+                    : (r.beneficiaries == null
+                        ? recipient == r.creator
+                        : r.beneficiaries!.load().shares.exists(recipient))
             ) throw 73;
             assert (
                 in.valueCoins >= (r.buybackBurn && !msg.protocol ? ton("0.4") : ton("0.2"))
@@ -95,7 +94,9 @@ fun onInternalMessage(in: InMessage) {
                             recipient,
                         },
                     );
-                val out = createMessage({ bounce: true, dest: wallet, value: tokenGas, body: AskToTransferTracked {
+                val out = createMessage({ bounce: true, dest: splitterWallet(
+                        c,
+                    ), value: tokenGas, body: AskToTransferTracked {
                         queryId: id,
                         jettonAmount: tokens,
                         transferRecipient: recipient,
@@ -112,7 +113,9 @@ fun onInternalMessage(in: InMessage) {
                 out.send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
             }
         }
-        ReturnExcessesBack => {}
+        ReturnExcessesBack => {
+            return;
+        }
         TransferDelivered => {
             val pending = s.pending.get(msg.queryId);
             if (pending.isFound) {
@@ -128,10 +131,12 @@ fun onInternalMessage(in: InMessage) {
             }
         }
         TransferFailed => {
-            assert (in.senderAddress == wallet) throw 73;
+            assert (in.senderAddress == splitterWallet(c)) throw 73;
             restorePayout(mutate s, msg.queryId, msg.amount);
         }
-        TopUpTons => {}
+        TopUpTons => {
+            return;
+        }
         else => throw 65535,
     }
     contract.setData(s.toCell());
@@ -182,7 +187,16 @@ fun feeBalance(s: SplitterStorage, recipient: address): FeeBalance {
 }
 
 fun creditBeneficiaries(mutate s: SplitterStorage, r: FeeRecipients, native: coins, tokens: coins) {
-    val shares = beneficiaryShares(r);
+    if (r.beneficiaries == null) {
+        var balance = feeBalance(s, r.creator);
+        balance.tonAmount += native;
+        balance.tokenAmount += tokens;
+        s.balances.set(r.creator, balance);
+        s.creatorTon += native;
+        s.creatorTokens += tokens;
+        return;
+    }
+    val shares = r.beneficiaries!.load().shares;
     var item = shares.findFirst();
     var cumulative = 0;
     var assignedTon: coins = 0;
@@ -217,4 +231,8 @@ get fun get_beneficiaries(): map<address, uint16> {
     return beneficiaryShares(
         SplitterStorage.fromCell(contract.getData()).config.load().recipients.load(),
     );
+}
+
+fun splitterWallet(c: SplitterConfig): address {
+    return calcAddressOfJettonWallet(contract.getAddress(), c.minter, jettonWalletV2CompiledCode());
 }

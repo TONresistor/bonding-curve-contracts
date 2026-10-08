@@ -83,13 +83,13 @@ get fun `test v2: underfunded sell notifications bounce and restore all tokens`(
         buyer,
     ) = notificationSetup();
     val curveWallet = JettonWalletV2.fromAddress(minter.getWalletAddress(curve.address));
-    expect(curveWallet.getMinSellNotification()).toEqual(ton("0.2"));
+    expect(curveWallet.getMinSellNotification()).toEqual(ton("0.05"));
     expect(JettonWalletV2.fromAddress(wallet.address).getMinSellNotification()).toEqual(0);
     val before = wallet.getWalletData().jettonBalance;
     val held = curveWallet.getWalletData().jettonBalance;
     val state = curve.getCurveData();
     val fees = curve.getLaunchProgress().creatorAccrued;
-    val forwards: array<coins> = [0, 1, ton("0.2") - 1];
+    val forwards: array<coins> = [0, 1, curveWallet.getMinSellNotification() - 1];
     var i = 0;
     repeat (3) {
         var j = 0;
@@ -131,7 +131,7 @@ get fun `test v2: underfunded sell notifications bounce and restore all tokens`(
             expect(curve.getCurveData().feeAccrued).toEqual(state.feeAccrued);
             expect(curve.getCurveData().migrationReserve).toEqual(state.migrationReserve);
             expect(curve.getLaunchProgress().creatorAccrued).toEqual(fees);
-            expect(curveWallet.getMinSellNotification()).toEqual(ton("0.2"));
+            expect(curveWallet.getMinSellNotification()).toEqual(ton("0.05"));
             j += 1;
         }
         i += 1;
@@ -246,7 +246,7 @@ get fun `test v2: protected curve wallet is confirmed before dev tokens are mint
     expect(minter.getJettonData().totalSupply).toEqual(0);
     val wallet = JettonWalletV2.fromAddress(minter.getWalletAddress(curve.address));
     cursor.executeTill<InternalCurveMint>({ to: wallet.address });
-    expect(wallet.getMinSellNotification()).toEqual(ton("0.2"));
+    expect(wallet.getMinSellNotification()).toEqual(ton("0.05"));
     expect(curve.getLaunchProgress().curveReceived).toEqual(false);
     expect(minter.getJettonData().totalSupply).toEqual(
         o.supply - curve.getLaunchProgress().devTokens,

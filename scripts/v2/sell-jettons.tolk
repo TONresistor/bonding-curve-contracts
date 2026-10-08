@@ -19,7 +19,7 @@ fun sellJettons(walletName: string, curveAddress: address, amount: coins, minTon
     val wallet = JettonWalletV2.fromAddress(minter.getWalletAddress(seller.address));
     assert (amount > 0 && amount <= wallet.getWalletData().jettonBalance) throw 47;
     val curveWallet = JettonWalletV2.fromAddress(minter.getWalletAddress(curveAddress));
-    val forward = max(MIN_CURVE_SELL_NOTIFICATION, curveWallet.getMinSellNotification());
+    val forward = curveWallet.getMinSellNotification();
     println("Quote (nano-TON): {}", curve.getQuoteSell(amount));
     wallet
         .sendAskToTransfer(

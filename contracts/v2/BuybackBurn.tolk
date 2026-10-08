@@ -9,7 +9,7 @@ import "../v1/jetton-utils"
 import "../v1/messages"
 
 contract BuybackBurnV2 {
-    version: "2.0.0"
+    version: "2.1.0"
     storage: BuybackStorage
     incomingMessages: BuybackMessages
 }
@@ -32,9 +32,10 @@ fun onInternalMessage(in: InMessage) {
     if (in.body.isEmpty()) {
         return;
     }
-    val msg = BuybackMessages.fromSlice(in.body);
+    val op = in.body.preloadUint(32);
     var s = BuybackStorage.load();
-    if (msg is InitBuyback) {
+    if (op == 0xa0a0b060) {
+        val msg = lazy InitBuyback.fromSlice(in.body);
         assert (in.senderAddress == s.identity.load().curve) throw 73;
         if (s.config == null) {
             s.config = msg.config;
@@ -45,18 +46,17 @@ fun onInternalMessage(in: InMessage) {
         s.save();
         return;
     }
-    if (msg is TopUpTons) {
+    if (op == 0xd372158c) {
         return;
     }
     assert (s.config != null) throw 49;
     val c = s.config!.load();
-    val pool = calcDeployedCpmmV2Pool(c.minter, c.collector, c.creatorFeeBps).calculateAddress();
-    val wallet = calcAddressOfJettonWallet(
-        contract.getAddress(),
-        c.minter,
-        jettonWalletV2CompiledCode(),
-    );
+    val msg = lazy BuybackMessages.fromSlice(in.body);
     match (msg) {
+        InitBuyback => throw 65535,
+        TopUpTons => {
+            return;
+        }
         ClaimBuybackFees => {
             assert (in.valueCoins >= ton("0.5")) throw 48;
             createMessage({ bounce: true, dest: c.splitter, value: ton("0.45"), body: ClaimSplitFees {
@@ -70,9 +70,12 @@ fun onInternalMessage(in: InMessage) {
             }
         }
         TransferNotificationForRecipient => {
-            assert (in.senderAddress == wallet) throw 73;
+            assert (in.senderAddress == buybackWallet(c)) throw 73;
             s.availableTokens += msg.jettonAmount;
-            if (s.swap != null && msg.transferInitiator != null && msg.transferInitiator! == pool) {
+            if (
+                s.swap != null && msg.transferInitiator != null &&
+                msg.transferInitiator! == buybackPool(c)
+            ) {
                 val pending = s.swap!.load();
                 if (msg.queryId == pending.id && msg.jettonAmount >= pending.minimumTokens) {
                     s.swap = null;
@@ -80,7 +83,7 @@ fun onInternalMessage(in: InMessage) {
             }
             // The payer funds the next leg; otherwise BurnAvailable retries it.
             if (in.valueCoins >= ton("0.2")) {
-                startBurn(mutate s, wallet);
+                startBurn(mutate s, buybackWallet(c));
             }
         }
         ExecuteBuyback => {
@@ -91,12 +94,14 @@ fun onInternalMessage(in: InMessage) {
             s.quoteId = s.nextId;
             s.nextId += 1;
             s.quoteDeadline = blockchain.now() + BUYBACK_QUOTE_TTL;
-            createMessage({ bounce: true, dest: pool, value: ton("0.1"), body: BuybackProvidePoolState {
-                    queryId: s.quoteId,
-                } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+            createMessage({ bounce: true, dest: buybackPool(
+                    c,
+                ), value: ton("0.1"), body: BuybackProvidePoolState { queryId: s.quoteId } }).send(
+                SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
         }
         BuybackTakePoolState => {
-            assert (in.senderAddress == pool) throw 73;
+            assert (in.senderAddress == buybackPool(c)) throw 73;
             if (msg.queryId != s.quoteId || s.quoteId == 0) {
                 return;
             }
@@ -122,7 +127,7 @@ fun onInternalMessage(in: InMessage) {
                         }.toCell();
                         s.availableTon -= amount;
                         val me = contract.getAddress();
-                        createMessage({ bounce: true, dest: pool, value: amount +
+                        createMessage({ bounce: true, dest: buybackPool(c), value: amount +
                                 ton("0.5"), body: BuybackPayNative {
                                 queryId: id,
                                 amount,
@@ -151,16 +156,16 @@ fun onInternalMessage(in: InMessage) {
             }
         }
         BuybackRefund => {
-            assert (in.senderAddress == pool) throw 73;
+            assert (in.senderAddress == buybackPool(c)) throw 73;
             refundBuyback(mutate s, msg.queryId, in.valueCoins);
         }
         DedustNativePayout => {
-            assert (in.senderAddress == pool) throw 73;
+            assert (in.senderAddress == buybackPool(c)) throw 73;
             refundBuyback(mutate s, msg.queryId, in.valueCoins);
         }
         BurnAvailable => {
             assert (in.valueCoins >= ton("0.2")) throw 48;
-            startBurn(mutate s, wallet);
+            startBurn(mutate s, buybackWallet(c));
         }
         BurnDelivered => {
             assert (in.senderAddress == c.minter) throw 73;
@@ -171,7 +176,7 @@ fun onInternalMessage(in: InMessage) {
             }
         }
         BurnFailed => {
-            assert (in.senderAddress == wallet) throw 73;
+            assert (in.senderAddress == buybackWallet(c)) throw 73;
             restoreBurn(mutate s, msg.queryId, msg.amount);
         }
     }
@@ -252,4 +257,12 @@ fun onBouncedMessage(in: InMessageBounced) {
 
 get fun get_buyback_data(): BuybackStorage {
     return BuybackStorage.load();
+}
+
+fun buybackPool(c: BuybackConfig): address {
+    return calcDeployedCpmmV2Pool(c.minter, c.collector, c.creatorFeeBps).calculateAddress();
+}
+
+fun buybackWallet(c: BuybackConfig): address {
+    return calcAddressOfJettonWallet(contract.getAddress(), c.minter, jettonWalletV2CompiledCode());
 }

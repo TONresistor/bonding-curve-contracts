@@ -9,7 +9,7 @@ import "../v1/jetton-utils"
 import "../v1/messages"
 
 contract FeeCollectorV2 {
-    version: "2.0.0"
+    version: "2.1.0"
     storage: CollectorStorage
     incomingMessages: CollectorMessages
 }
@@ -28,19 +28,19 @@ fun onInternalMessage(in: InMessage) {
     }
     val msg = lazy CollectorMessages.fromSlice(in.body);
     var s = CollectorStorage.fromCell(contract.getData());
-    val r = s.recipients.load();
-    val pool = calcDeployedCpmmV2Pool(
-        s.minter,
-        contract.getAddress(),
-        r.creatorBps,
-    ).calculateAddress();
-    val split = splitterAddress(contract.getAddress(), s.minter, s.recipients);
     match (msg) {
         TopUpTons => {
+            if (s.initialized) {
+                return;
+            }
             if (!s.initialized) {
                 assert (in.valueCoins >= ton("0.1")) throw 48;
                 s.initialized = true;
-                createMessage({ bounce: false, dest: split, value: ton("0.05"), body: TopUpTons {} }).send(
+                createMessage({ bounce: false, dest: splitterAddress(
+                        contract.getAddress(),
+                        s.minter,
+                        s.recipients,
+                    ), value: ton("0.05"), body: TopUpTons {} }).send(
                     SEND_MODE_PAY_FEES_SEPARATELY,
                 );
             }
@@ -49,14 +49,16 @@ fun onInternalMessage(in: InMessage) {
             assert (s.initialized && in.valueCoins >= ton("0.4")) throw 48;
             val id = s.nextId;
             s.nextId += 1;
-            createMessage({ bounce: true, dest: pool, value: ton("0.3"), body: DedustClaimCreatorFees {
+            createMessage({ bounce: true, dest: collectorPool(
+                    s,
+                ), value: ton("0.3"), body: DedustClaimCreatorFees {
                     queryId: id,
                     to: contract.getAddress(),
                     excessesTo: in.senderAddress,
                 } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
         }
         DedustNativePayout => {
-            assert (in.senderAddress == pool) throw 73;
+            assert (in.senderAddress == collectorPool(s)) throw 73;
             s.nativeAccrued += in.valueCoins;
             flushCollectedNative(mutate s);
         }
@@ -75,14 +77,20 @@ fun onInternalMessage(in: InMessage) {
             createMessage({ bounce: true, dest: wallet, value: ton("0.3"), body: AskToTransfer {
                     queryId: msg.queryId,
                     jettonAmount: msg.amount,
-                    transferRecipient: split.calculateAddress(),
+                    transferRecipient: splitterAddress(
+                        contract.getAddress(),
+                        s.minter,
+                        s.recipients,
+                    ).calculateAddress(),
                     sendExcessesTo: in.senderAddress,
                     customPayload: null,
                     forwardTonAmount: ton("0.15"),
                     forwardPayload: beginCell().storeUint(0, 1).toSlice(),
                 } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
         }
-        ReturnExcessesBack => {}
+        ReturnExcessesBack => {
+            return;
+        }
         else => throw 65535,
     }
     contract.setData(s.toCell());
@@ -126,6 +134,14 @@ get fun get_splitter_address(): address {
 
 get fun get_pool_address(): address {
     val s = CollectorStorage.fromCell(contract.getData());
+    return calcDeployedCpmmV2Pool(
+        s.minter,
+        contract.getAddress(),
+        s.recipients.load().creatorBps,
+    ).calculateAddress();
+}
+
+fun collectorPool(s: CollectorStorage): address {
     return calcDeployedCpmmV2Pool(
         s.minter,
         contract.getAddress(),

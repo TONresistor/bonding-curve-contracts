@@ -1,7 +1,5 @@
 import "../v1/messages"
 
-const MIN_CURVE_SELL_NOTIFICATION: coins = ton("0.2")
-
 struct (0xa0a0b055) MintCurveWallet {
     queryId: uint64
     jettonAmount: coins

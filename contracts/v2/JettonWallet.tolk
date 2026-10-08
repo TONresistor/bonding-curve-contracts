@@ -12,7 +12,7 @@ import "../v1/storage"
 
 contract JettonWalletV2 {
     author: "The Tolk Team; bonding-curve-contracts"
-    version: "2.1-v2"
+    version: "2.1.0"
     description: "Reference-derived jetton wallet with authenticated V2 delivery receipts"
     incomingMessages: AllowedMessageToWallet
     storage: WalletStorageV2
@@ -89,26 +89,31 @@ fun onInternalMessage(in: InMessage) {
 
     match (msg) {
         InternalCurveMint => {
-            val storage = WalletStorageV2.load();
-            assert (in.senderAddress == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
-            assert (!storage.isCurveWallet()) throw Errors.InvalidOp;
             receiveTokens(
                 in.senderAddress,
                 in.valueCoins,
                 InternalTransferStep {
                     queryId: msg.queryId,
                     jettonAmount: msg.jettonAmount,
-                    transferInitiator: storage.ownerAddress,
-                    sendExcessesTo: storage.ownerAddress,
+                    transferInitiator: null,
+                    sendExcessesTo: null,
                     forwardTonAmount: ton("0.05"),
                     forwardPayload: beginCell().storeUint(0, 1).toSlice(),
                 },
                 false,
                 true,
+                in.originalForwardFee,
             );
         }
         InternalTransferStep => {
-            receiveTokens(in.senderAddress, in.valueCoins, msg, false);
+            receiveTokens(
+                in.senderAddress,
+                in.valueCoins,
+                msg,
+                false,
+                false,
+                in.originalForwardFee,
+            );
         }
         InternalTransferTracked => {
             receiveTokens(
@@ -123,6 +128,8 @@ fun onInternalMessage(in: InMessage) {
                     forwardPayload: msg.forwardPayload,
                 },
                 true,
+                false,
+                in.originalForwardFee,
             );
         }
 
@@ -205,7 +212,7 @@ fun onInternalMessage(in: InMessage) {
         }
 
         AskToBurnTracked => {
-            checkAmountIsEnoughToBurn(in.valueCoins);
+            checkWalletBurnBudget(in.valueCoins);
             var storage = WalletStorageV2.load();
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
             assert (
@@ -222,7 +229,7 @@ fun onInternalMessage(in: InMessage) {
             );
         }
         AskToBurn => {
-            checkAmountIsEnoughToBurn(in.valueCoins);
+            checkWalletBurnBudget(in.valueCoins);
 
             var storage = lazy WalletStorageV2.load();
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
@@ -269,8 +276,14 @@ fun receiveTokens(
     msg: InternalTransferStep,
     tracked: bool,
     protect: bool = false,
+    fwdFee: coins = 0,
 ) {
     var storage = lazy WalletStorageV2.load();
+    if (protect) {
+        assert (sender == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
+        assert (!storage.isCurveWallet()) throw Errors.InvalidOp;
+        storage.protection = beginCell().storeBool(true).toSlice();
+    }
     if (sender != storage.minterAddress) {
         assert (
             sender ==
@@ -281,15 +294,15 @@ fun receiveTokens(
             )
         ) throw ERROR_NOT_VALID_WALLET;
     }
-    if (protect) {
-        assert (sender == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
-        storage.protection = beginCell().storeBool(true).toSlice();
-    }
     if (storage.isCurveWallet() && sender != storage.minterAddress) {
-        assert (msg.forwardTonAmount >= MIN_CURVE_SELL_NOTIFICATION) throw Errors.NotEnoughGas;
+        assert (
+            msg.forwardTonAmount >= minimumCurveSellNotification(fwdFee)
+        ) throw Errors.NotEnoughGas;
     }
     storage.jettonBalance += msg.jettonAmount;
     storage.save();
+    val initiator = protect ? storage.ownerAddress : msg.transferInitiator;
+    val excessesTo = protect ? storage.ownerAddress : msg.sendExcessesTo;
 
     if (msg.forwardTonAmount != 0) {
         val notifyOwnerMsg = createMessage({
@@ -299,7 +312,7 @@ fun receiveTokens(
             body: TransferNotificationForRecipient {
                 queryId: msg.queryId,
                 jettonAmount: msg.jettonAmount,
-                transferInitiator: msg.transferInitiator,
+                transferInitiator: initiator,
                 forwardPayload: msg.forwardPayload,
             },
         });
@@ -308,14 +321,11 @@ fun receiveTokens(
         );
     }
 
-    if (
-        (tracked || sender == storage.minterAddress) && msg.transferInitiator != null &&
-        msg.jettonAmount > 0
-    ) {
+    if ((tracked || sender == storage.minterAddress) && initiator != null && msg.jettonAmount > 0) {
         if (tracked) {
             createMessage({
                 bounce: false,
-                dest: msg.transferInitiator!,
+                dest: initiator!,
                 value: ton("0.01"),
                 body: TransferDelivered {
                     queryId: msg.queryId,
@@ -325,7 +335,7 @@ fun receiveTokens(
         } else {
             createMessage({
                 bounce: false,
-                dest: msg.transferInitiator!,
+                dest: initiator!,
                 value: ton("0.01"),
                 body: MintDelivered {
                     queryId: msg.queryId,
@@ -334,7 +344,7 @@ fun receiveTokens(
             }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
         }
     }
-    if (msg.sendExcessesTo != null) {
+    if (excessesTo != null) {
         val toLeaveOnBalance = contract.getOriginalBalance() - value +
             contract.getStorageDuePayment();
         reserveGramsOnBalance(
@@ -344,7 +354,7 @@ fun receiveTokens(
 
         val excessesMsg = createMessage({
             bounce: BounceMode.NoBounce,
-            dest: msg.sendExcessesTo,
+            dest: excessesTo,
             value: 0,
             body: ReturnExcessesBack { queryId: msg.queryId },
         });
@@ -354,5 +364,5 @@ fun receiveTokens(
 }
 
 get fun get_min_sell_notification(): coins {
-    return WalletStorageV2.load().isCurveWallet() ? MIN_CURVE_SELL_NOTIFICATION : 0;
+    return WalletStorageV2.load().isCurveWallet() ? minimumCurveSellNotification() : 0;
 }
