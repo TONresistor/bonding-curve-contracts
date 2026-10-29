@@ -241,7 +241,12 @@ fun onBouncedMessage(in: InMessageBounced) {
     } else if (op == 0xa5a7cbf8 || op == 0x00d8d379) {
         assert (
             in.senderAddress ==
-            calcDeployedCpmmV2Pool(c.minter, c.collector, c.creatorFeeBps).calculateAddress()
+            calcDeployedCpmmV2Pool(
+                c.minter,
+                c.collector,
+                c.creatorFeeBps,
+                s.identity.load().curve,
+            ).calculateAddress()
         ) throw 73;
         if (op == 0xa5a7cbf8) {
             if (s.swap != null && id == s.swap!.load().id) {
@@ -260,7 +265,12 @@ get fun get_buyback_data(): BuybackStorage {
 }
 
 fun buybackPool(c: BuybackConfig): address {
-    return calcDeployedCpmmV2Pool(c.minter, c.collector, c.creatorFeeBps).calculateAddress();
+    return calcDeployedCpmmV2Pool(
+        c.minter,
+        c.collector,
+        c.creatorFeeBps,
+        BuybackStorage.load().identity.load().curve,
+    ).calculateAddress();
 }
 
 fun buybackWallet(c: BuybackConfig): address {

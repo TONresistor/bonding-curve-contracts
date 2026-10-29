@@ -614,6 +614,7 @@ fun onInternalMessage(in: InMessage) {
                 jettonMinter,
                 curveCollector(storage).calculateAddress(),
                 config.options.load().creatorFeeBps,
+                contract.getAddress(),
             );
 
             storage.state = CURVE_STATE_GRADUATING;
@@ -748,6 +749,7 @@ fun onInternalMessage(in: InMessage) {
                 jettonMinter,
                 curveCollector(storage).calculateAddress(),
                 config.options.load().creatorFeeBps,
+                contract.getAddress(),
             );
             val poolAddr = poolAuto.calculateAddress();
             if (in.senderAddress != poolAddr) {
@@ -1127,6 +1129,7 @@ get fun get_pool_address(): address {
         s.jettonMinter!,
         curveCollector(s).calculateAddress(),
         s.config.load().options.load().creatorFeeBps,
+        contract.getAddress(),
     ).calculateAddress();
 }
 
@@ -1139,6 +1142,7 @@ fun migrationPool(storage: BondingCurveStorage): address {
         storage.jettonMinter!,
         curveCollector(storage).calculateAddress(),
         storage.config.load().options.load().creatorFeeBps,
+        contract.getAddress(),
     ).calculateAddress();
 }
 

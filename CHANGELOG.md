@@ -9,6 +9,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/
 
 - V2.1: custom supply, migration threshold, sold share and creator fees, with liquidity validation.
 - V2.1: avoid unnecessary address derivations, storage writes and temporary fee dictionaries.
+- V2.1: DeDust pools accept deposits only after the curve's migration deposit; pool addresses depend on the curve.
 
 - SDK 0.1.1: reduce the default sell budget from 0.4 to 0.25 TON.
 

@@ -70,6 +70,9 @@ const DEFAULT_POOL_CONTROLLER: address = address("UQAzZk-YE-C_2TaxMzNi71upLfwLYB
 
 const DEDUST_FEE_IN_BOTH: uint2 = 0b00
 
+// DedustV2CpmmActivationInitiator: only a deposit initiated by this address opens deposits.
+const DEDUST_ACTIVATION_INITIATOR: uint8 = 2
+
 fun buildCpmmV2PoolCode(): cell {
     return beginCell()
         .storeInt(ExoticCellType.LibraryReference, 8)
@@ -77,14 +80,26 @@ fun buildCpmmV2PoolCode(): cell {
         .endCellSpecial();
 }
 
-fun buildCpmmV2PoolConfig(jettonMinter: address, creator: address, creatorBps: int = 0): cell {
+// Deposits stay closed until the curve's own deposit lands, so nobody can seed the pool at
+// another price between our InitPool and our deposit legs. Swaps need no gate: an empty pool
+// rejects them (ZeroLiquidity), and an initiator swap gate would only open on a curve swap.
+fun buildCpmmV2PoolConfig(
+    jettonMinter: address,
+    creator: address,
+    creatorBps: int,
+    curve: address,
+): cell {
+    val depositActivation = beginCell()
+        .storeUint(DEDUST_ACTIVATION_INITIATOR, 8)
+        .storeAddress(curve)
+        .endCell();
     return beginCell()
         .storeUint(0, 2)
         .storeAddress(jettonMinter)
         .storeAddress(creator)
         .storeUint(poolBaseFeeBps(creatorBps), 16)
         .storeUint(5000, 16)
-        .storeBool(false)
+        .storeMaybeRef(depositActivation)
         .storeBool(false)
         .storeUint(DEDUST_FEE_IN_BOTH, 2)
         .storeBool(false)
@@ -112,9 +127,14 @@ fun buildCpmmV2PoolExtra(): cell {
         .endCell();
 }
 
-fun buildCpmmV2PoolStorage(jettonMinter: address, creator: address, creatorBps: int = 0): cell {
+fun buildCpmmV2PoolStorage(
+    jettonMinter: address,
+    creator: address,
+    creatorBps: int,
+    curve: address,
+): cell {
     return beginCell()
-        .storeRef(buildCpmmV2PoolConfig(jettonMinter, creator, creatorBps))
+        .storeRef(buildCpmmV2PoolConfig(jettonMinter, creator, creatorBps, curve))
         .storeRef(buildCpmmV2PoolFees())
         .storeRef(buildCpmmV2PoolExtra())
         .storeBool(false)
@@ -130,13 +150,14 @@ fun buildCpmmV2PoolStorage(jettonMinter: address, creator: address, creatorBps: 
 fun calcDeployedCpmmV2Pool(
     jettonMinter: address,
     creator: address,
-    creatorBps: int = 0,
+    creatorBps: int,
+    curve: address,
 ): AutoDeployAddress {
     return {
         workchain: 0,
         stateInit: {
             code: buildCpmmV2PoolCode(),
-            data: buildCpmmV2PoolStorage(jettonMinter, creator, creatorBps),
+            data: buildCpmmV2PoolStorage(jettonMinter, creator, creatorBps, curve),
         },
     };
 }

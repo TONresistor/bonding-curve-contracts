@@ -20,6 +20,8 @@ Amounts use nano-TON/nano-tokens; `supplyTokens` and `graduationTon` use whole u
 
 The protocol treasury must use workchain **0**. Deployment, treasury updates and launch initialization enforce this. Wallet V2 storage/transfer estimates use separately tested size bounds; V1 is unchanged. `dropAdminPending` clears only after an authenticated minter acknowledgment, with idempotent retries if it is delayed.
 
+The DeDust pool config sets `depositActivation` to the curve: the pool refuses other deposits until the curve's migration deposit lands, and the pool address (`get_pool_address`) depends on the curve address.
+
 ## Launch detection
 
 - Master topic `0xa0a0a001` (`LaunchCreatedEvent`): discovery, before initialization finishes. Read metadata and launch options from the transaction's incoming `CreateLaunch` message.

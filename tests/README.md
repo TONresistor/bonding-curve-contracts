@@ -11,7 +11,7 @@ acton test tests/v2
 acton run v2-simulation -- --offline
 ```
 
-**60 tests** cover launches, lifecycle events, trades, refunds, fees and buyback & burn. The local migration runner passed **540 preset scenarios**, **9 custom configurations**, **3 buy-limit migrations** and **2 completion checks** (normal flow and concurrent confirmations: locked LP, migration fee paid once).
+**67 tests** cover launches, lifecycle events, trades, refunds, fees, buyback & burn and DeDust deposit activation. The local migration runner passed **540 preset scenarios**, **9 custom configurations**, **3 buy-limit migrations** and **2 completion checks** (normal flow and concurrent confirmations: locked LP, migration fee paid once).
 
 V2.1 covers custom parameters and liquidity limits. Existing V2 failure/refund flows are preserved; no gas-refund system is added. Migration scenarios run in batches of 90 to bound emulator memory.
 
