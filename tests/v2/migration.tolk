@@ -198,6 +198,7 @@ fun v2MigrationScenario(
         mintCandidate.address,
         collectorCandidate,
         fee,
+        curveAddress,
     ).calculateAddress();
     val owners: array<address> = [
         curveAddress,

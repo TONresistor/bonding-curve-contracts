@@ -138,6 +138,7 @@ get fun get_pool_address(): address {
         s.minter,
         contract.getAddress(),
         s.recipients.load().creatorBps,
+        s.recipients.load().curve!,
     ).calculateAddress();
 }
 
@@ -146,5 +147,6 @@ fun collectorPool(s: CollectorStorage): address {
         s.minter,
         contract.getAddress(),
         s.recipients.load().creatorBps,
+        s.recipients.load().curve!,
     ).calculateAddress();
 }
