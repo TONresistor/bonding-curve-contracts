@@ -44,6 +44,9 @@ type AllowedMessageToCurve =
     | TransferFailed
     | TransferDelivered
     | InitPoolResultMessage
+    | RequestWalletAddress
+    | TakeMigrationPoolState
+    | MigrationNativeRefund
     | TransferNotificationForRecipient
     | TopUpTons
 
@@ -58,6 +61,8 @@ type BounceableOutboundOps =
     | DedustInit
     | ProvidePositionState
     | CreditCurveFees
+    | ResponseWalletAddress
+    | ProvideMigrationPoolState
 
 fun emptyForwardPayload(): slice {
     return beginCell().storeUint(0, 1).toSlice();
@@ -313,6 +318,14 @@ fun onInternalMessage(in: InMessage) {
             }
 
             val initiator = msg.transferInitiator;
+
+            if (
+                storage.migration != null && initiator != null &&
+                initiator == migrationPool(storage)
+            ) {
+                restoreMigrationJettons(mutate storage, msg.queryId, msg.jettonAmount);
+                return;
+            }
 
             if (
                 storage.state == CURVE_STATE_INITIALIZING && initiator != null &&
@@ -733,7 +746,52 @@ fun onInternalMessage(in: InMessage) {
         }
         TransferDelivered => {}
 
+        RequestWalletAddress => {
+            val storage = BondingCurveStorage.load();
+            if (
+                storage.state == CURVE_STATE_INITIALIZING ||
+                storage.state == CURVE_STATE_CANCELLED ||
+                storage.jettonMinter == null
+            ) {
+                return;
+            }
+            val pool = migrationPool(storage);
+            assert (in.senderAddress == pool && msg.ownerAddress == pool) throw Errors.NotOwner;
+            resolveMigrationWallet(storage, msg.queryId);
+        }
+
         InitPoolResultMessage => {
+            var storage = BondingCurveStorage.load();
+            if (storage.state != CURVE_STATE_GRADUATING || storage.jettonMinter == null) {
+                return;
+            }
+            assert (in.senderAddress == migrationPool(storage)) throw Errors.NotOwner;
+            if (msg.exitCode != 0 && msg.exitCode != 20) {
+                storage.state = CURVE_STATE_FROZEN;
+                storage.save();
+                return;
+            }
+            requestMigrationPoolState(storage, msg.queryId);
+        }
+
+        MigrationNativeRefund => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                storage.jettonMinter != null && in.senderAddress == migrationPool(storage)
+            ) throw Errors.NotOwner;
+            if (msg.code != 0 && storage.migration != null) {
+                val amount = storage.migration!.load().tonAmount;
+                // DeDust's insufficient-gas rejection returns value with amount=0.
+                if (
+                    in.valueCoins >= amount &&
+                    (msg.amount == amount || (msg.code == 25 && msg.amount == 0))
+                ) {
+                    restoreMigrationNative(mutate storage, msg.queryId, amount);
+                }
+            }
+        }
+
+        TakeMigrationPoolState => {
             var storage = lazy BondingCurveStorage.load();
             val config = storage.config.load();
 
@@ -756,11 +814,20 @@ fun onInternalMessage(in: InMessage) {
                 return;
             }
 
-            if (msg.exitCode != 0) {
+            if (msg.status is MigrationPoolInitializing) {
+                // Also recovers a resolution request lost before this curve existed.
+                resolveMigrationWallet(storage, 0);
+                requestMigrationPoolState(storage, msg.queryId);
+                return;
+            }
+            if (!(msg.status is MigrationPoolInitialized)) {
                 storage.state = CURVE_STATE_FROZEN;
                 storage.save();
                 return;
             }
+            assert (
+                msg.liquidity == 0 && msg.reserveX == 0 && msg.reserveY == 0
+            ) throw Errors.InvalidOp;
             val poolSeedTon = storage.realTonReserve - MIGRATION_FEE;
             val xMarginal = storage.virtualTonReserve + poolSeedTon + MIGRATION_FEE;
             val poolSeedJettons = (poolSeedTon * storage.curveJettonBalance) / xMarginal;
@@ -855,6 +922,16 @@ fun onBouncedMessage(in: InMessageBounced) {
         }
         DropMinterAdmin => {}
         ProvidePositionState => {}
+        ResponseWalletAddress => {}
+        ProvideMigrationPoolState => {
+            assert (
+                storage.jettonMinter != null && in.senderAddress == migrationPool(storage)
+            ) throw Errors.NotOwner;
+            if (storage.state == CURVE_STATE_GRADUATING) {
+                storage.state = CURVE_STATE_FROZEN;
+                storage.save();
+            }
+        }
         DedustInit => {
             if (storage.state == CURVE_STATE_GRADUATING) {
                 storage.state = CURVE_STATE_FROZEN;
@@ -866,17 +943,8 @@ fun onBouncedMessage(in: InMessageBounced) {
                 return;
             }
             assert (in.senderAddress == migrationPool(storage)) throw Errors.NotValidWallet;
-            var migration = storage.migration!.load();
-            if (
-                !migration.nativeRetry && parsed.queryId == migration.nativeQueryId &&
-                parsed.amount == migration.tonAmount
-            ) {
-                migration.nativeRetry = true;
-                storage.realTonReserve += migration.tonAmount;
-                storage.state = CURVE_STATE_MIGRATION_RETRY;
-                storage.migration = migration.toCell();
-                storage.save();
-            }
+            assert (in.valueCoins >= parsed.amount) throw Errors.BalanceError;
+            restoreMigrationNative(mutate storage, parsed.queryId, parsed.amount);
         }
         else => {}
     }
@@ -1146,6 +1214,27 @@ fun migrationPool(storage: BondingCurveStorage): address {
     ).calculateAddress();
 }
 
+fun requestMigrationPoolState(storage: BondingCurveStorage, queryId: uint64) {
+    createMessage({ bounce: true, dest: migrationPool(
+            storage,
+        ), value: ton("0.05"), body: ProvideMigrationPoolState { queryId } }).send(
+        SEND_MODE_PAY_FEES_SEPARATELY,
+    );
+}
+
+fun resolveMigrationWallet(storage: BondingCurveStorage, queryId: uint64) {
+    val pool = migrationPool(storage);
+    createMessage({ bounce: true, dest: pool, value: ton("0.05"), body: ResponseWalletAddress {
+            queryId,
+            jettonWalletAddress: calcAddressOfJettonWallet(
+                pool,
+                storage.jettonMinter!,
+                jettonWalletV2CompiledCode(),
+            ),
+            ownerAddress: pool.toCell(),
+        } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
+}
+
 fun sendMigrationNative(storage: BondingCurveStorage) {
     val m = storage.migration!.load();
     createMessage({ bounce: true, dest: migrationPool(storage), value: m.tonAmount +
@@ -1181,7 +1270,11 @@ fun sendMigrationJettons(storage: BondingCurveStorage) {
 }
 
 fun restoreMigrationJettons(mutate storage: BondingCurveStorage, id: uint64, amount: coins) {
-    if (storage.migration == null) {
+    if (
+        storage.migration == null ||
+        (storage.state != CURVE_STATE_AWAITING_LIQUIDITY &&
+            storage.state != CURVE_STATE_MIGRATION_RETRY)
+    ) {
         return;
     }
     var m = storage.migration!.load();
@@ -1190,6 +1283,24 @@ fun restoreMigrationJettons(mutate storage: BondingCurveStorage, id: uint64, amo
         storage.curveJettonBalance += amount;
         storage.state = CURVE_STATE_MIGRATION_RETRY;
         storage.migration = m.toCell();
+        storage.save();
+    }
+}
+
+fun restoreMigrationNative(mutate storage: BondingCurveStorage, id: uint64, amount: coins) {
+    if (
+        storage.migration == null ||
+        (storage.state != CURVE_STATE_AWAITING_LIQUIDITY &&
+            storage.state != CURVE_STATE_MIGRATION_RETRY)
+    ) {
+        return;
+    }
+    var migration = storage.migration!.load();
+    if (!migration.nativeRetry && id == migration.nativeQueryId && amount == migration.tonAmount) {
+        migration.nativeRetry = true;
+        storage.realTonReserve += migration.tonAmount;
+        storage.state = CURVE_STATE_MIGRATION_RETRY;
+        storage.migration = migration.toCell();
         storage.save();
     }
 }
