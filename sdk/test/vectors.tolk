@@ -144,7 +144,8 @@ fun main() {
                         devBuyAmount: ton("2"),
                         minDevTokens: 123,
                         graduationThreshold: thresholds.get(k) * 1000000000,
-                        reserveRatio: ratios.get(l),
+                        soldSupplyBps: (ratios.get(l) * 10000 + (ratios.get(l) + 1) / 2) /
+                            (ratios.get(l) + 1),
                     };
                     validateLaunchOptions(options);
                     println(

@@ -20,7 +20,9 @@ import "@contracts/v2/collector-address"
 import "@contracts/v2/wallet-messages"
 import "activation.test"
 import "migration"
+import "migration-finalization"
 import "../shared/dedust"
+import "../../scripts/v2/retry-migration"
 
 get fun `test recovery: normal migration retains all locked liquidity`() {
     val e = setupEnv(9301);
@@ -28,7 +30,7 @@ get fun `test recovery: normal migration retains all locked liquidity`() {
     expectMigrated(e, e.curve.getPoolAddress());
 }
 
-get fun `test recovery: bounced readiness query permits another graduation attempt`() {
+get fun `test recovery: retry script graduates a FROZEN curve`() {
     val e = setupEnv(9302);
     val pool = e.curve.getPoolAddress();
     val cursor = testing.createTraceIterationCursor(e.buyer, graduatingBuy(e.curve));
@@ -40,7 +42,41 @@ get fun `test recovery: bounced readiness query permits another graduation attem
     cursor.close();
     expect(e.curve.getState()).toEqual(CURVE_STATE_FROZEN);
     testing.setShardAccount(pool, original);
-    e.curve.sendGraduate(e.buyer, 1, { value: ton("0.8") });
+    retryMigration("act-buyer", e.curve.address);
+    expectMigrated(e, pool);
+}
+
+get fun `test recovery: retry script resends refunded MIGRATION_RETRY legs`() {
+    val e = setupEnv(9303);
+    val pool = e.curve.getPoolAddress();
+    val (native, jettons) = recoveryLegs(e);
+    val original = recoveryPoolData(pool);
+    initializingRecoveryPool(pool, e.attacker);
+    net.send(e.curve.address, native);
+    net.send(e.curve.address, jettons);
+    expect(e.curve.getState()).toEqual(CURVE_STATE_MIGRATION_RETRY);
+    expect(e.curve.getMigrationData()!.nativeRetry).toEqual(true);
+    expect(e.curve.getMigrationData()!.jettonRetry).toEqual(true);
+    setRecoveryPoolData(pool, original);
+    retryMigration("act-buyer", e.curve.address);
+    expectMigrated(e, pool);
+}
+
+get fun `test recovery: retry script confirms AWAITING_LIQUIDITY before delayed notification`() {
+    val e = setupEnv(9304);
+    val pool = e.curve.getPoolAddress();
+    val position = calcMigrationPosition(pool, e.curve.address);
+    val cursor = testing.createTraceIterationCursor(e.buyer, graduatingBuy(e.curve));
+    cursor.executeTill<PositionCreditProbe>({ to: position });
+    expect(e.curve.getState()).toEqual(CURVE_STATE_AWAITING_LIQUIDITY);
+    retryMigration("act-buyer", e.curve.address);
+    expectMigrated(e, pool);
+    val protocol = testing.treasury("act-owner").address;
+    val master = BondingCurveMasterV2.fromStorage({ admin: protocol, nextAdmin: null, treasury: protocol, totalLaunches: 0, feesBalance: 0 });
+    expect(master.getMasterData().feesBalance).toEqual(ton("20.2"));
+    cursor.executeAllRemaining();
+    cursor.close();
+    expect(master.getMasterData().feesBalance).toEqual(ton("20.2"));
     expectMigrated(e, pool);
 }
 
