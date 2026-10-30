@@ -12,6 +12,20 @@ const wallet = Address.parseRaw('0:' + '33'.repeat(32));
 const config = { supplyTokens: 1_000_000_000, creatorFeeBps: 100 };
 const hash = (cell) => BigInt('0x' + cell.hash().toString('hex')).toString();
 
+test('reserve ratio presets serialize as V2.1 sold supply basis points', () => {
+  for (const [reserveRatio, expectedBps] of [
+    [3, 7500n],
+    [5, 8333n],
+    [8, 8889n],
+  ]) {
+    const options = sdk.launchOptions({ ...config, reserveRatio });
+    const decoded = LaunchOptions.fromSlice(LaunchOptions.toCell(options).beginParse());
+    assert.equal(decoded.soldSupplyBps, expectedBps);
+    assert.equal('reserveRatio' in options, false);
+  }
+  assert.equal(sdk.launchOptions(config).soldSupplyBps, 8333n);
+});
+
 test('payload hashes match Tolk serializers for all 135 launch presets and trade/fee messages', () => {
   const output = execFileSync('acton', ['script', 'sdk/test/vectors.tolk'], {
     cwd: new URL('../../', import.meta.url),
