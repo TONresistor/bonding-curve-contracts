@@ -429,7 +429,7 @@ get fun `test activation: skewed deposit before our legs is refused`() {
     val pool = curvePool(e).calculateAddress();
     val tokens = v2Tokens(e.minter, e.attacker);
     val cursor = testing.createTraceIterationCursor(e.buyer, graduatingBuy(e.curve));
-    cursor.executeTill<InitPoolResultMessage>({ from: pool, to: e.curve.address });
+    cursor.executeTill<TakeMigrationPoolState>({ from: pool, to: e.curve.address });
     expect(e.curve.getState()).toEqual(CURVE_STATE_AWAITING_LIQUIDITY);
     expectRejectedDeposit(
         e,
@@ -469,9 +469,7 @@ get fun `test activation: deposit between the curve legs is refused`() {
     expectMigrated(e, pool);
 }
 
-// Known remaining issue: a third-party InitPool still freezes the curve (20 NotUninitialized),
-// but the front-runner cannot seed the pool, and none of our liquidity reaches it.
-get fun `test activation: front-run InitPool freezes the curve and leaves the pool empty`() {
+get fun `test activation: front-run InitPool preserves protected migration`() {
     val e = setupEnv(7104);
     val poolAuto = curvePool(e);
     val pool = poolAuto.calculateAddress();
@@ -492,14 +490,7 @@ get fun `test activation: front-run InitPool freezes the curve and leaves the po
             .curve
             .address, to: pool, opcode: OP_INIT_POOL, exitCode: 20, aborted: false });
     expect(initResultCode(grad, pool, e.curve.address)).toEqual(20);
-    expect(e.curve.getState()).toEqual(CURVE_STATE_FROZEN);
-    expect(grad).toNotHaveTx({ from: e.curve.address, to: pool, opcode: OP_PAY_NATIVE });
-    expect(v2Tokens(e.minter, pool)).toEqual(0);
-    val p = pd(pool);
-    expect(p.reserveX).toEqual(0);
-    expect(p.reserveY).toEqual(0);
-    expect(p.liquidity).toEqual(0);
-    expectFlags(pool, POOL_INITIALIZED, false, true);
+    expectMigrated(e, pool);
 }
 
 get fun `test activation: curve collector and buyback derive the deployed pool`() {

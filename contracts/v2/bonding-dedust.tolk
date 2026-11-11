@@ -93,6 +93,9 @@ fun buildCpmmV2PoolConfig(
         .storeUint(DEDUST_ACTIVATION_INITIATOR, 8)
         .storeAddress(curve)
         .endCell();
+    val (_, minterHash) = jettonMinter.getWorkchainAndHash();
+    var resolvers: map<uint256, address> = [];
+    resolvers.set(minterHash, curve);
     return beginCell()
         .storeUint(0, 2)
         .storeAddress(jettonMinter)
@@ -102,7 +105,7 @@ fun buildCpmmV2PoolConfig(
         .storeMaybeRef(depositActivation)
         .storeBool(false)
         .storeUint(DEDUST_FEE_IN_BOTH, 2)
-        .storeBool(false)
+        .storeDict(resolvers.toLowLevelDict())
         .storeBool(false)
         .endCell();
 }

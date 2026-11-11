@@ -43,7 +43,8 @@ export function launchOptions(config: LaunchConfig): LaunchOptions {
   coins(minDevTokens, 'minimum dev tokens');
   const supply = BigInt(supplyTokens) * NANO;
   const threshold = BigInt(graduationTon) * NANO;
-  const virtual = threshold / BigInt(reserveRatio);
+  const soldSupplyBps = { 3: 7500n, 5: 8333n, 8: 8889n }[reserveRatio];
+  const virtual = (threshold * (10000n - soldSupplyBps)) / soldSupplyBps;
   if (
     (supply * BigInt(minBuyBps) + 9999n) / 10000n >
     (virtual * supply) / (virtual + threshold) - supply / 10n
@@ -74,7 +75,7 @@ export function launchOptions(config: LaunchConfig): LaunchOptions {
     devBuyAmount,
     minDevTokens,
     graduationThreshold: threshold,
-    reserveRatio: BigInt(reserveRatio),
+    soldSupplyBps,
     minBuyBps: BigInt(minBuyBps),
     maxBuyBps: BigInt(maxBuyBps),
     beneficiaries: recipients,

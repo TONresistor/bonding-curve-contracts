@@ -63,6 +63,12 @@ fun onBouncedMessage(in: InMessageBounced) {
 
     var storage = lazy WalletStorageV2.load();
     storage.jettonBalance += restoreAmount;
+    if (tracked && storage.isCurveWallet()) {
+        val pending = storage.refund();
+        if (pending.queryId == id && pending.amount == restoreAmount) {
+            storage.setRefund({ pool: null, queryId: 0, amount: 0 });
+        }
+    }
     storage.save();
     if (burn) {
         assert (in.senderAddress == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
@@ -187,6 +193,9 @@ fun onInternalMessage(in: InMessage) {
             assert (in.senderAddress == storage.ownerAddress) throw ERROR_NOT_OWNER;
             assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
+            if (storage.isCurveWallet()) {
+                storage.setRefund({ pool: msg.transferRecipient, queryId: msg.queryId, amount: msg.jettonAmount });
+            }
             storage.save();
 
             val deployMsg = createMessage({
@@ -294,17 +303,37 @@ fun receiveTokens(
             )
         ) throw ERROR_NOT_VALID_WALLET;
     }
-    if (storage.isCurveWallet() && sender != storage.minterAddress) {
+    val pending = storage.isCurveWallet()
+        ? storage.refund()
+        : CurveWalletRefund {
+            pool: null,
+            queryId: 0,
+            amount: 0,
+        };
+    // DeDust may return a rejected leg without funding a sell notification.
+    val poolRefund = pending.pool != null && msg.transferInitiator != null &&
+        msg.transferInitiator == pending.pool &&
+        msg.queryId == pending.queryId &&
+        msg.jettonAmount == pending.amount;
+    if (storage.isCurveWallet() && sender != storage.minterAddress && !poolRefund) {
         assert (
             msg.forwardTonAmount >= minimumCurveSellNotification(fwdFee)
         ) throw Errors.NotEnoughGas;
     }
     storage.jettonBalance += msg.jettonAmount;
+    if (poolRefund) {
+        storage.setRefund({ pool: null, queryId: 0, amount: 0 });
+    }
     storage.save();
     val initiator = protect ? storage.ownerAddress : msg.transferInitiator;
     val excessesTo = protect ? storage.ownerAddress : msg.sendExcessesTo;
 
-    if (msg.forwardTonAmount != 0) {
+    if (poolRefund) {
+        createMessage({ bounce: false, dest: storage.ownerAddress, value: ton("0.01"), body: TransferFailed {
+                queryId: msg.queryId,
+                amount: msg.jettonAmount,
+            } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+    } else if (msg.forwardTonAmount != 0) {
         val notifyOwnerMsg = createMessage({
             bounce: BounceMode.NoBounce,
             dest: storage.ownerAddress,

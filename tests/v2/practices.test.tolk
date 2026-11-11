@@ -162,7 +162,16 @@ get fun `test v2: wallet reserve covers compiled code maximum data and actual fi
         jettonBalance: (1 << 120) - 1,
         ownerAddress: owner,
         minterAddress: minter.address,
-        protection: beginCell().storeBool(true).toSlice(),
+        protection: beginCell()
+            .storeBool(true)
+            .storeRef(
+                CurveWalletRefund {
+                    pool: recipient,
+                    queryId: (1 << 64) - 1,
+                    amount: (1 << 120) - 1,
+                }.toCell(),
+            )
+            .toSlice(),
     }
     .toCell()
     .calculateSizeStrict(1000);

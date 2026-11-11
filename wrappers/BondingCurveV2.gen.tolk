@@ -340,6 +340,72 @@ fun BondingCurveV2.sendInitPoolResultMessage(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendRequestWalletAddress(
+    self,
+    from: address,
+    queryId: uint64,
+    ownerAddress: address,
+    includeOwnerAddress: bool,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: RequestWalletAddress { queryId, ownerAddress, includeOwnerAddress },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendTakeMigrationPoolState(
+    self,
+    from: address,
+    queryId: uint64,
+    status: MigrationPoolStatus,
+    depositActive: bool,
+    swapActive: bool,
+    liquidity: coins,
+    reserveX: coins,
+    reserveY: coins,
+    rest: RemainingBitsAndRefs,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: TakeMigrationPoolState {
+            queryId,
+            status,
+            depositActive,
+            swapActive,
+            liquidity,
+            reserveX,
+            reserveY,
+            rest,
+        },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendMigrationNativeRefund(
+    self,
+    from: address,
+    queryId: uint64,
+    amount: coins,
+    code: int32,
+    payload: cell?,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: MigrationNativeRefund { queryId, amount, code, payload },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun BondingCurveV2.sendTransferNotificationForRecipient(
     self,
     from: address,

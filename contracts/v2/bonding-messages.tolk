@@ -73,6 +73,45 @@ struct (0xce185bd7) InitPoolResultMessage {
     customPayload: cell?
 }
 
+struct (0x00d8d379) ProvideMigrationPoolState {
+    queryId: uint64
+    includeConfig: bool = false
+    includeFees: bool = false
+    includeCodeHash: bool = false
+    includeRewards: bool = false
+}
+
+struct (0b00) MigrationPoolUninitialized {}
+
+struct (0b01) MigrationPoolInitializing {
+    initiatorAddress: address
+}
+
+struct (0b10) MigrationPoolInitialized {}
+
+type MigrationPoolStatus =
+    | MigrationPoolUninitialized
+    | MigrationPoolInitializing
+    | MigrationPoolInitialized
+
+struct (0x870a9579) TakeMigrationPoolState {
+    queryId: uint64
+    status: MigrationPoolStatus
+    depositActive: bool
+    swapActive: bool
+    liquidity: coins
+    reserveX: coins
+    reserveY: coins
+    rest: RemainingBitsAndRefs
+}
+
+struct (0x3216ca09) MigrationNativeRefund {
+    queryId: uint64
+    amount: coins
+    code: int32
+    payload: cell?
+}
+
 struct (0xa0a0a020) SellPayload {
     queryId: uint64
     minTonOut: coins
