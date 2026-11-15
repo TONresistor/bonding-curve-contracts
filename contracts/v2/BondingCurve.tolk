@@ -47,6 +47,7 @@ type AllowedMessageToCurve =
     | RequestWalletAddress
     | TakeMigrationPoolState
     | MigrationNativeRefund
+    | MigrationJettonRefund
     | TransferNotificationForRecipient
     | TopUpTons
 
@@ -323,7 +324,7 @@ fun onInternalMessage(in: InMessage) {
                 storage.migration != null && initiator != null &&
                 initiator == migrationPool(storage)
             ) {
-                restoreMigrationJettons(mutate storage, msg.queryId, msg.jettonAmount);
+                // Refunds are acknowledged by our wallet after it validates their context.
                 return;
             }
 
@@ -557,8 +558,13 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 storage.state != CURVE_STATE_INITIALIZING && storage.state != CURVE_STATE_CANCELLED
             ) throw Errors.InvalidOp;
+            val pendingPrincipal = storage.migration != null &&
+                storage.migration!.load().pendingNativeRefund
+                ? storage.migration!.load().tonAmount
+                : 0 as coins;
             val tracked = storage.realTonReserve + storage.feeAccrued + storage.migrationReserve +
-                storage.progress.load().creatorAccrued;
+                storage.progress.load().creatorAccrued +
+                pendingPrincipal;
             val ownBalance = contract.getOriginalBalance();
             val preInbound = ownBalance > in.valueCoins ? ownBalance - in.valueCoins : 0 as coins;
             val floor = tracked + CURVE_STORAGE_RESERVE;
@@ -646,13 +652,33 @@ fun onInternalMessage(in: InMessage) {
         RetryMigration => {
             var storage = BondingCurveStorage.load();
             assert (
-                storage.state == CURVE_STATE_MIGRATION_RETRY && storage.migration != null
+                (storage.state == CURVE_STATE_MIGRATION_RETRY ||
+                    storage.state == CURVE_STATE_AWAITING_LIQUIDITY) &&
+                storage.migration != null
             ) throw Errors.InvalidOp;
             assert (in.valueCoins >= ton("0.5")) throw Errors.NotEnoughGas;
             var migration = storage.migration!.load();
+            if (migration.pendingNativeRefund || migration.pendingJettonRefund) {
+                requestRefundPoolState(mutate storage);
+                return;
+            }
+            assert (storage.state == CURVE_STATE_MIGRATION_RETRY) throw Errors.InvalidOp;
             val retryNative = migration.nativeRetry;
             val retryJettons = migration.jettonRetry;
             assert (retryNative || retryJettons) throw Errors.InvalidOp;
+            assert (
+                !migration.closingDeposit || (retryNative && retryJettons)
+            ) throw Errors.InvalidOp;
+            val maxId = (1 << 64) - 1;
+            assert (
+                (!retryNative || migration.nativeQueryId < maxId) &&
+                (!retryJettons || migration.jettonQueryId < maxId) &&
+                (!(retryNative && retryJettons) || migration.depositGeneration < maxId)
+            ) throw Errors.InvalidOp;
+            if (retryNative && retryJettons) {
+                migration.depositGeneration += 1;
+                migration.closingDeposit = false;
+            }
             if (retryNative) {
                 migration.nativeQueryId += 1;
                 migration.nativeRetry = false;
@@ -696,9 +722,20 @@ fun onInternalMessage(in: InMessage) {
                 } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
         }
         ConfirmMigration => {
-            val storage = BondingCurveStorage.load();
-            assert (storage.state == CURVE_STATE_AWAITING_LIQUIDITY) throw Errors.InvalidOp;
+            var storage = BondingCurveStorage.load();
+            assert (
+                storage.state == CURVE_STATE_AWAITING_LIQUIDITY ||
+                storage.state == CURVE_STATE_MIGRATION_RETRY
+            ) throw Errors.InvalidOp;
             assert (in.valueCoins >= ton("0.1")) throw Errors.NotEnoughGas;
+            if (
+                storage.migration != null &&
+                (storage.migration!.load().pendingNativeRefund ||
+                    storage.migration!.load().pendingJettonRefund)
+            ) {
+                requestRefundPoolState(mutate storage);
+                return;
+            }
             val position = calcMigrationPosition(migrationPool(storage), contract.getAddress());
             createMessage({ bounce: true, dest: position, value: ton("0.07"), body: ProvidePositionState {
                     queryId: msg.queryId,
@@ -710,7 +747,10 @@ fun onInternalMessage(in: InMessage) {
         }
         DepositNotification => {
             var storage = BondingCurveStorage.load();
-            if (storage.state != CURVE_STATE_AWAITING_LIQUIDITY) {
+            if (
+                storage.state != CURVE_STATE_AWAITING_LIQUIDITY &&
+                storage.state != CURVE_STATE_MIGRATION_RETRY
+            ) {
                 return;
             }
             assert (
@@ -721,7 +761,10 @@ fun onInternalMessage(in: InMessage) {
         }
         TakePositionState => {
             var storage = BondingCurveStorage.load();
-            if (storage.state != CURVE_STATE_AWAITING_LIQUIDITY) {
+            if (
+                storage.state != CURVE_STATE_AWAITING_LIQUIDITY &&
+                storage.state != CURVE_STATE_MIGRATION_RETRY
+            ) {
                 return;
             }
             assert (
@@ -745,6 +788,42 @@ fun onInternalMessage(in: InMessage) {
             restoreMigrationJettons(mutate storage, msg.queryId, msg.amount);
         }
         TransferDelivered => {}
+
+        MigrationJettonRefund => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                storage.jettonMinter != null &&
+                in.senderAddress ==
+                calcAddressOfJettonWallet(
+                    contract.getAddress(),
+                    storage.jettonMinter!,
+                    jettonWalletV2CompiledCode(),
+                )
+            ) throw Errors.NotValidWallet;
+            if (
+                storage.migration == null ||
+                (storage.state != CURVE_STATE_AWAITING_LIQUIDITY &&
+                    storage.state != CURVE_STATE_MIGRATION_RETRY)
+            ) {
+                return;
+            }
+            var m = storage.migration!.load();
+            if (
+                !m.jettonRetry && !m.pendingJettonRefund &&
+                msg.depositGeneration == m.depositGeneration &&
+                msg.queryId == m.jettonQueryId &&
+                msg.amount == m.jettonAmount
+            ) {
+                val checking = m.pendingNativeRefund || m.pendingJettonRefund;
+                m.pendingJettonRefund = true;
+                m.pendingDepositClose = m.pendingDepositClose || msg.closingDeposit;
+                storage.migration = m.toCell();
+                storage.save();
+                if (!checking) {
+                    requestRefundPoolState(mutate storage);
+                }
+            }
+        }
 
         RequestWalletAddress => {
             val storage = BondingCurveStorage.load();
@@ -771,7 +850,7 @@ fun onInternalMessage(in: InMessage) {
                 storage.save();
                 return;
             }
-            requestMigrationPoolState(storage, msg.queryId);
+            requestMigrationPoolState(storage);
         }
 
         MigrationNativeRefund => {
@@ -779,6 +858,30 @@ fun onInternalMessage(in: InMessage) {
             assert (
                 storage.jettonMinter != null && in.senderAddress == migrationPool(storage)
             ) throw Errors.NotOwner;
+            if (
+                msg.code == 0 && storage.migration != null &&
+                (storage.state == CURVE_STATE_AWAITING_LIQUIDITY ||
+                    storage.state == CURVE_STATE_MIGRATION_RETRY)
+            ) {
+                var m = storage.migration!.load();
+                val generation = migrationRefundGeneration(msg.payload);
+                if (
+                    !m.nativeRetry && !m.pendingNativeRefund && generation != null &&
+                    generation == m.depositGeneration &&
+                    msg.amount == m.tonAmount &&
+                    in.valueCoins >= m.tonAmount
+                ) {
+                    val checking = m.pendingNativeRefund || m.pendingJettonRefund;
+                    m.pendingNativeRefund = true;
+                    m.pendingDepositClose = true;
+                    storage.migration = m.toCell();
+                    storage.save();
+                    if (!checking) {
+                        requestRefundPoolState(mutate storage);
+                    }
+                }
+                return;
+            }
             if (msg.code != 0 && storage.migration != null) {
                 val amount = storage.migration!.load().tonAmount;
                 // DeDust's insufficient-gas rejection returns value with amount=0.
@@ -786,7 +889,21 @@ fun onInternalMessage(in: InMessage) {
                     in.valueCoins >= amount &&
                     (msg.amount == amount || (msg.code == 25 && msg.amount == 0))
                 ) {
-                    restoreMigrationNative(mutate storage, msg.queryId, amount);
+                    var m = storage.migration!.load();
+                    if (
+                        !m.nativeRetry && !m.pendingNativeRefund &&
+                        msg.queryId == m.nativeQueryId &&
+                        (storage.state == CURVE_STATE_AWAITING_LIQUIDITY ||
+                            storage.state == CURVE_STATE_MIGRATION_RETRY)
+                    ) {
+                        val checking = m.pendingNativeRefund || m.pendingJettonRefund;
+                        m.pendingNativeRefund = true;
+                        storage.migration = m.toCell();
+                        storage.save();
+                        if (!checking) {
+                            requestRefundPoolState(mutate storage);
+                        }
+                    }
                 }
             }
         }
@@ -794,6 +911,42 @@ fun onInternalMessage(in: InMessage) {
         TakeMigrationPoolState => {
             var storage = lazy BondingCurveStorage.load();
             val config = storage.config.load();
+
+            if (storage.state != CURVE_STATE_GRADUATING) {
+                if (storage.migration == null || in.senderAddress != migrationPool(storage)) {
+                    return;
+                }
+                var m = storage.migration!.load();
+                if (
+                    msg.queryId != m.refundCheckId ||
+                    (!m.pendingNativeRefund && !m.pendingJettonRefund)
+                ) {
+                    return;
+                }
+                val native = m.pendingNativeRefund;
+                val jettons = m.pendingJettonRefund;
+                // Activation gates forbid third-party deposits before our first JoinLiquidity.
+                // Once liquidity exists, payouts to us can belong to somebody else's deposit.
+                val empty = msg.liquidity == 0 && msg.reserveX == 0 && msg.reserveY == 0;
+                val recover = empty &&
+                    (storage.state == CURVE_STATE_AWAITING_LIQUIDITY ||
+                        storage.state == CURVE_STATE_MIGRATION_RETRY);
+                m.closingDeposit = m.closingDeposit || (recover && m.pendingDepositClose);
+                m.pendingNativeRefund = false;
+                m.pendingJettonRefund = false;
+                m.pendingDepositClose = false;
+                storage.migration = m.toCell();
+                storage.save();
+                if (recover) {
+                    if (native) {
+                        restoreMigrationNative(mutate storage, m.nativeQueryId, m.tonAmount);
+                    }
+                    if (jettons) {
+                        restoreMigrationJettons(mutate storage, m.jettonQueryId, m.jettonAmount);
+                    }
+                }
+                return;
+            }
 
             if (storage.state != CURVE_STATE_GRADUATING) {
                 return;
@@ -817,7 +970,7 @@ fun onInternalMessage(in: InMessage) {
             if (msg.status is MigrationPoolInitializing) {
                 // Also recovers a resolution request lost before this curve existed.
                 resolveMigrationWallet(storage, 0);
-                requestMigrationPoolState(storage, msg.queryId);
+                requestMigrationPoolState(storage);
                 return;
             }
             if (!(msg.status is MigrationPoolInitialized)) {
@@ -1214,10 +1367,23 @@ fun migrationPool(storage: BondingCurveStorage): address {
     ).calculateAddress();
 }
 
-fun requestMigrationPoolState(storage: BondingCurveStorage, queryId: uint64) {
+fun requestMigrationPoolState(storage: BondingCurveStorage) {
     createMessage({ bounce: true, dest: migrationPool(
             storage,
-        ), value: ton("0.05"), body: ProvideMigrationPoolState { queryId } }).send(
+        ), value: ton("0.05"), body: ProvideMigrationPoolState { queryId: 0 } }).send(
+        SEND_MODE_PAY_FEES_SEPARATELY,
+    );
+}
+
+fun requestRefundPoolState(mutate storage: BondingCurveStorage) {
+    var m = storage.migration!.load();
+    assert (m.refundCheckId < (1 << 64) - 1) throw Errors.InvalidOp;
+    m.refundCheckId += 1;
+    storage.migration = m.toCell();
+    storage.save();
+    createMessage({ bounce: true, dest: migrationPool(
+            storage,
+        ), value: ton("0.05"), body: ProvideMigrationPoolState { queryId: m.refundCheckId } }).send(
         SEND_MODE_PAY_FEES_SEPARATELY,
     );
 }
@@ -1242,7 +1408,10 @@ fun sendMigrationNative(storage: BondingCurveStorage) {
             queryId: m.nativeQueryId,
             amount: m.tonAmount,
             paymentPayload: buildDepositPayload(m.tonAmount, m.jettonAmount),
-            payoutConfig: buildMigrationPayoutConfig(storage.config.load().master),
+            payoutConfig: buildMigrationPayoutConfig(
+                storage.config.load().master,
+                m.depositGeneration,
+            ),
         } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
 }
 
@@ -1251,7 +1420,7 @@ fun sendMigrationJettons(storage: BondingCurveStorage) {
     val payload = beginCell()
         .storeUint(DEDUST_CPMM_V2_OP_PAY_JETTON, 32)
         .storeRef(buildDepositPayload(m.tonAmount, m.jettonAmount))
-        .storeRef(buildMigrationPayoutConfig(storage.config.load().master))
+        .storeRef(buildMigrationPayoutConfig(storage.config.load().master, m.depositGeneration))
         .endCell();
     val wallet = calcAddressOfJettonWallet(
         contract.getAddress(),
@@ -1263,7 +1432,9 @@ fun sendMigrationJettons(storage: BondingCurveStorage) {
             jettonAmount: m.jettonAmount,
             transferRecipient: migrationPool(storage),
             sendExcessesTo: storage.config.load().master,
-            customPayload: null,
+            customPayload: MigrationDepositRefundContext {
+                depositGeneration: m.depositGeneration,
+            }.toCell(),
             forwardTonAmount: DEDUST_CPMM_V2_JETTON_FORWARD_TON,
             forwardPayload: beginCell().storeUint(1, 1).storeRef(payload).toSlice(),
         } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
@@ -1319,14 +1490,27 @@ fun confirmLockedMigration(
     if (storage.migration == null) {
         return;
     }
-    val migration = storage.migration!.load();
+    var migration = storage.migration!.load();
     if (
-        migration.nativeRetry || migration.jettonRetry || liquidity <= 0 || locked != liquidity ||
-        locked <
+        liquidity <= 0 || locked != liquidity || locked <
         migrationMinimumLiquidity(migration.tonAmount, migration.jettonAmount)
     ) {
         return;
     }
+    // The authenticated position proves our seed is committed even if a third party
+    // routed an unrelated pool payout to us while our JoinLiquidity was in flight.
+    // Any native amount already restored in that case is an additional contribution.
+    if (migration.nativeRetry) {
+        storage.realTonReserve -= migration.tonAmount;
+        storage.feeAccrued += migration.tonAmount;
+    }
+    migration.nativeRetry = false;
+    migration.jettonRetry = false;
+    migration.closingDeposit = false;
+    migration.pendingNativeRefund = false;
+    migration.pendingJettonRefund = false;
+    migration.pendingDepositClose = false;
+    storage.migration = migration.toCell();
     val config = storage.config.load();
     storage.state = CURVE_STATE_MIGRATED;
     storage.realTonReserve -= MIGRATION_FEE;

@@ -144,6 +144,59 @@ type coins = bigint
 type uint64 = bigint
 
 /**
+ > struct (0xa0a0b067) MigrationJettonRefund {
+ >     queryId: uint64
+ >     depositGeneration: uint64
+ >     amount: coins
+ >     closingDeposit: bool
+ > }
+ */
+export interface MigrationJettonRefund {
+    readonly $: 'MigrationJettonRefund'
+    queryId: uint64
+    depositGeneration: uint64
+    amount: coins
+    closingDeposit: boolean /* = true */
+}
+
+export const MigrationJettonRefund = {
+    PREFIX: 0xa0a0b067,
+
+    create(args: {
+        queryId: uint64
+        depositGeneration: uint64
+        amount: coins
+        closingDeposit?: boolean /* = true */
+    }): MigrationJettonRefund {
+        return {
+            $: 'MigrationJettonRefund',
+            closingDeposit: true,
+            ...args
+        }
+    },
+    fromSlice(s: c.Slice): MigrationJettonRefund {
+        loadAndCheckPrefix32(s, 0xa0a0b067, 'MigrationJettonRefund');
+        return {
+            $: 'MigrationJettonRefund',
+            queryId: s.loadUintBig(64),
+            depositGeneration: s.loadUintBig(64),
+            amount: s.loadCoins(),
+            closingDeposit: s.loadBoolean(),
+        }
+    },
+    store(self: MigrationJettonRefund, b: c.Builder): void {
+        b.storeUint(0xa0a0b067, 32);
+        b.storeUint(self.queryId, 64);
+        b.storeUint(self.depositGeneration, 64);
+        b.storeCoins(self.amount);
+        b.storeBit(self.closingDeposit);
+    },
+    toCell(self: MigrationJettonRefund): c.Cell {
+        return makeCellFrom<MigrationJettonRefund>(self, MigrationJettonRefund.store);
+    }
+}
+
+/**
  > struct (0xa0a0b056) InternalCurveMint {
  >     queryId: uint64
  >     jettonAmount: coins
@@ -1207,11 +1260,12 @@ function calculateDeployedAddress(code: c.Cell, data: c.Cell, options: DeployedA
 }
 
 export class JettonWalletV2 implements c.Contract {
-    static CodeCell = c.Cell.fromBase64('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');
+    static CodeCell = c.Cell.fromBase64('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');
 
     static Errors = {
         'ERROR_BALANCE_ERROR': 47,
         'Errors.NotEnoughGas': 48,
+        'Errors.InvalidMessage': 49,
         'Errors.InvalidOp': 72,
         'ERROR_NOT_OWNER': 73,
         'ERROR_NOT_VALID_WALLET': 74,

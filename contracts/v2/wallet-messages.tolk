@@ -1,5 +1,56 @@
 import "../v1/messages"
 
+struct (0xa0a0b066) MigrationDepositRefundContext {
+    depositGeneration: uint64
+}
+
+struct (0xa0a0b067) MigrationJettonRefund {
+    queryId: uint64
+    depositGeneration: uint64
+    amount: coins
+    closingDeposit: bool = true
+}
+
+struct (0xe8db4696) MigrationPayoutPayload {
+    exitCode: int32
+    payload: cell?
+}
+
+fun migrationRefundGeneration(payload: cell?): uint64? {
+    if (payload == null) {
+        return null;
+    }
+    try {
+        val context = MigrationDepositRefundContext.fromCell(payload!);
+        return context.depositGeneration > 0 ? context.depositGeneration : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+// Recognized late or contextual payouts must never fall back to a query-only match.
+fun migrationPayoutContext(encoded: slice): (bool, bool, uint64?) {
+    try {
+        var payload = encoded;
+        val ref = payload.loadMaybeRef();
+        if (ref != null) {
+            payload.assertEnd();
+            payload = ref!.beginParse();
+        }
+        if (payload.remainingBitsCount() == 0 && payload.remainingRefsCount() == 0) {
+            return (false, false, null);
+        }
+        if (payload.preloadUint(32) != 0xe8db4696) {
+            return (true, false, null);
+        }
+        val wrapped = MigrationPayoutPayload.fromSlice(payload);
+        val late = wrapped.exitCode == 0;
+        return (late || wrapped.payload != null, late, migrationRefundGeneration(wrapped.payload));
+    } catch (_) {
+        return (true, false, null);
+    }
+}
+
 struct (0xa0a0b055) MintCurveWallet {
     queryId: uint64
     jettonAmount: coins

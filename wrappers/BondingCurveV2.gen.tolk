@@ -406,6 +406,24 @@ fun BondingCurveV2.sendMigrationNativeRefund(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendMigrationJettonRefund(
+    self,
+    from: address,
+    queryId: uint64,
+    depositGeneration: uint64,
+    amount: coins,
+    closingDeposit: bool,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: MigrationJettonRefund { queryId, depositGeneration, amount, closingDeposit },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun BondingCurveV2.sendTransferNotificationForRecipient(
     self,
     from: address,

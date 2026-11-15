@@ -194,7 +194,9 @@ fun onInternalMessage(in: InMessage) {
             assert (storage.jettonBalance >= msg.jettonAmount) throw ERROR_BALANCE_ERROR;
             storage.jettonBalance -= msg.jettonAmount;
             if (storage.isCurveWallet()) {
-                storage.setRefund({ pool: msg.transferRecipient, queryId: msg.queryId, amount: msg.jettonAmount });
+                val generation = migrationRefundGeneration(msg.customPayload);
+                assert (generation != null) throw Errors.InvalidMessage;
+                storage.setRefund({ pool: msg.transferRecipient, queryId: msg.queryId, amount: msg.jettonAmount, depositGeneration: generation! });
             }
             storage.save();
 
@@ -311,10 +313,21 @@ fun receiveTokens(
             amount: 0,
         };
     // DeDust may return a rejected leg without funding a sell notification.
+    val fromPendingPool = pending.pool != null && msg.transferInitiator != null &&
+        msg.transferInitiator == pending.pool;
+    val (contextual, late, generation) = storage.isCurveWallet() && fromPendingPool
+        ? migrationPayoutContext(msg.forwardPayload)
+        : (false, false, null as uint64?);
+    val sameGeneration = generation != null && generation == pending.depositGeneration;
     val poolRefund = pending.pool != null && msg.transferInitiator != null &&
         msg.transferInitiator == pending.pool &&
-        msg.queryId == pending.queryId &&
-        msg.jettonAmount == pending.amount;
+        msg.jettonAmount == pending.amount &&
+        (contextual
+            ? sameGeneration && (late || msg.queryId == pending.queryId)
+            : msg.queryId == pending.queryId);
+    if (contextual && fromPendingPool) {
+        assert (poolRefund) throw Errors.NotEnoughGas;
+    }
     if (storage.isCurveWallet() && sender != storage.minterAddress && !poolRefund) {
         assert (
             msg.forwardTonAmount >= minimumCurveSellNotification(fwdFee)
@@ -329,9 +342,11 @@ fun receiveTokens(
     val excessesTo = protect ? storage.ownerAddress : msg.sendExcessesTo;
 
     if (poolRefund) {
-        createMessage({ bounce: false, dest: storage.ownerAddress, value: ton("0.01"), body: TransferFailed {
-                queryId: msg.queryId,
+        createMessage({ bounce: false, dest: storage.ownerAddress, value: ton("0.01"), body: MigrationJettonRefund {
+                queryId: pending.queryId,
+                depositGeneration: pending.depositGeneration,
                 amount: msg.jettonAmount,
+                closingDeposit: late,
             } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
     } else if (msg.forwardTonAmount != 0) {
         val notifyOwnerMsg = createMessage({

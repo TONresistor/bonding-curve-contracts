@@ -12,6 +12,35 @@ const wallet = Address.parseRaw('0:' + '33'.repeat(32));
 const config = { supplyTokens: 1_000_000_000, creatorFeeBps: 100 };
 const hash = (cell) => BigInt('0x' + cell.hash().toString('hex')).toString();
 
+test('migration getter decodes deposit generation, closing state and absent progress', async () => {
+  let present = true;
+  const client = new sdk.LaunchpadV2(() => ({
+    get: async (method) => {
+      assert.equal(method, 'get_migration_data');
+      const fields = present
+        ? [2n, 1n, 100n, 200n, -1n, 0n, 7n, -1n, 4n, 0n, -1n, -1n, -1n].map((value) => ({
+            type: 'int',
+            value,
+          }))
+        : [...Array.from({ length: 12 }, () => ({ type: 'null' })), { type: 'int', value: 0n }];
+      return { stack: new TupleReader(fields) };
+    },
+  }));
+  const progress = await client.curve(curve).getMigrationData();
+  assert.equal(progress.nativeQueryId, 2n);
+  assert.equal(progress.jettonQueryId, 1n);
+  assert.equal(progress.depositGeneration, 7n);
+  assert.equal(progress.closingDeposit, true);
+  assert.equal(progress.refundCheckId, 4n);
+  assert.equal(progress.pendingNativeRefund, false);
+  assert.equal(progress.pendingJettonRefund, true);
+  assert.equal(progress.pendingDepositClose, true);
+  assert.equal(progress.nativeRetry, true);
+  assert.equal(progress.jettonRetry, false);
+  present = false;
+  assert.equal(await client.curve(curve).getMigrationData(), null);
+});
+
 test('reserve ratio presets serialize as V2.1 sold supply basis points', () => {
   for (const [reserveRatio, expectedBps] of [
     [3, 7500n],

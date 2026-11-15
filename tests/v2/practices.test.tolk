@@ -1,3 +1,4 @@
+import "@acton/io"
 import "@acton/emulation/config"
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
@@ -169,12 +170,18 @@ get fun `test v2: wallet reserve covers compiled code maximum data and actual fi
                     pool: recipient,
                     queryId: (1 << 64) - 1,
                     amount: (1 << 120) - 1,
+                    depositGeneration: (1 << 64) - 1,
                 }.toCell(),
             )
             .toSlice(),
     }
     .toCell()
     .calculateSizeStrict(1000);
+    println(
+        "WALLET_STORAGE_BOUND cells={} bits={}",
+        codeCells + dataCells + 1,
+        codeBits + dataBits + 256,
+    );
     expect(codeCells + dataCells + 1 <= V2_WALLET_STORAGE_CELLS).toEqual(true);
     expect(codeBits + dataBits + 256 <= V2_WALLET_STORAGE_BITS).toEqual(true);
     val reserve = walletStorageReserve();

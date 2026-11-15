@@ -1,6 +1,7 @@
 import "@stdlib/exotic-cells"
 import "bonding-messages"
 import "bonding-storage"
+import "wallet-messages"
 
 const DEDUST_POOL_V2_LIBRARY_HASH: uint256 = 0x6045e67b617e73486aac445cfcad0dbead6d315ccc8f4aede3f2e23ad14da4b0
 
@@ -211,7 +212,10 @@ fun calcMigrationPosition(pool: address, owner: address): address {
     return position.calculateAddress();
 }
 
-fun buildMigrationPayoutConfig(excessesTo: address): cell {
+fun buildMigrationPayoutConfig(excessesTo: address, depositGeneration: uint64 = 0): cell {
+    val context: cell? = depositGeneration == 0
+        ? null
+        : MigrationDepositRefundContext { depositGeneration }.toCell() as cell;
     // Notify the curve after liquidity is credited.
     return beginCell()
         .storeUint(0, 2)
@@ -220,8 +224,8 @@ fun buildMigrationPayoutConfig(excessesTo: address): cell {
         .storeBool(false)
         .storeUint(0, 2)
         .storeCoins(0)
-        .storeMaybeRef(null)
-        .storeBool(false)
+        .storeMaybeRef(context)
+        .storeBool(context != null)
         .storeAddress(excessesTo)
         .endCell();
 }

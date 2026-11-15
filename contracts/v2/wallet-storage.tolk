@@ -10,6 +10,7 @@ struct CurveWalletRefund {
     pool: address?
     queryId: uint64
     amount: coins
+    depositGeneration: uint64 = 0
 }
 
 fun WalletStorageV2.refund(self): CurveWalletRefund {

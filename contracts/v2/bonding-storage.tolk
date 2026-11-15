@@ -7,6 +7,12 @@ struct MigrationProgress {
     jettonAmount: coins
     nativeRetry: bool
     jettonRetry: bool
+    depositGeneration: uint64 = 1
+    closingDeposit: bool = false
+    refundCheckId: uint64 = 0
+    pendingNativeRefund: bool = false
+    pendingJettonRefund: bool = false
+    pendingDepositClose: bool = false
 }
 
 const CURVE_STATE_MIGRATION_RETRY: uint8 = 6
