@@ -9,6 +9,7 @@ import "@acton/testing/assert"
 import "@contracts/v1/messages"
 import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
+import "@contracts/v2/wallet-messages"
 
 /// Storage `MasterStorage` is defined in `@contracts/v2/bonding-storage`
 struct BondingCurveMasterV2 {
@@ -249,6 +250,22 @@ fun BondingCurveMasterV2.sendTopUpTons(
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveMasterV2.sendProbeLaunchSettlement(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: ProbeLaunchSettlement { queryId, leg },
+    });
+    return net.send(from, genericMsg);
+}
+
 /// Send message to the contract with a custom body cell
 fun BondingCurveMasterV2.sendAny(
     self,
@@ -288,4 +305,12 @@ fun BondingCurveMasterV2.getLaunchPreview(self, options: LaunchOptions): LaunchP
 
 fun BondingCurveMasterV2.getVersion(self): int {
     return net.runGetMethod(self.address, "get_version");
+}
+
+fun BondingCurveMasterV2.getCreateLaunchQuote(
+    self,
+    creator: address,
+    request: CreateLaunch,
+): CreationQuote {
+    return net.runGetMethod(self.address, "get_create_launch_quote", [creator, request.toCell()]);
 }

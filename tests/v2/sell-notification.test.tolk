@@ -245,14 +245,14 @@ get fun `test v2: protected curve wallet is confirmed before dev tokens are mint
     ).toHaveFailedTx<MintCurveWallet>({ to: minter.address, exitCode: 73 });
     expect(minter.getJettonData().totalSupply).toEqual(0);
     val wallet = JettonWalletV2.fromAddress(minter.getWalletAddress(curve.address));
-    cursor.executeTill<InternalCurveMint>({ to: wallet.address });
+    cursor.executeTill<InternalLaunchMint>({ to: wallet.address });
     expect(wallet.getMinSellNotification()).toEqual(ton("0.05"));
     expect(curve.getLaunchProgress().curveReceived).toEqual(false);
     expect(minter.getJettonData().totalSupply).toEqual(
         o.supply - curve.getLaunchProgress().devTokens,
     );
     expect(curve.getState()).toEqual(CURVE_STATE_INITIALIZING);
-    cursor.executeTill<TransferNotificationForRecipient>({ to: curve.address });
+    cursor.executeTill<MintDelivered>({ to: curve.address });
     expect(curve.getLaunchProgress().curveReceived).toEqual(true);
     expect(curve.getLaunchProgress().devReceived).toEqual(false);
     expect(minter.getJettonData().totalSupply).toEqual(
@@ -273,18 +273,18 @@ get fun `test v2: protected curve wallet is confirmed before dev tokens are mint
 get fun `test v2: failed dev mint after wallet protection cancels and refunds launch`() {
     val (master, curve, creator, cursor, o) = guardedPendingLaunch();
     val minter = JettonMinterV2.fromAddress(curve.getCurveData().jettonMinter!);
-    cursor.executeTill<TransferNotificationForRecipient>({ to: curve.address });
+    cursor.executeTill<MintDelivered>({ to: curve.address });
     expect(curve.getLaunchProgress().curveReceived).toEqual(true);
     val original = testing.getConfig();
     var expensive = original;
     var prices = expensive.getGasPrices(BASECHAIN);
     var other = prices.other;
-    other.gasPrice *= 1000;
+    other.gasPrice *= 100;
     prices.other = other;
     expensive.setGasPrices(prices, BASECHAIN);
     testing.setConfig(expensive);
-    val failure = cursor.executeTill<MintNewJettons>({ to: minter.address });
-    expect(failure).toHaveFailedTx<MintNewJettons>({ to: minter.address, exitCode: 48 });
+    val failure = cursor.executeTill<MintLaunchTokens>({ to: minter.address });
+    expect(failure).toHaveFailedTx<MintLaunchTokens>({ to: minter.address, exitCode: 48 });
     testing.setConfig(original);
     val recovery = cursor.executeAllRemaining();
     cursor.close();
@@ -302,7 +302,7 @@ get fun `test v2: dev sell before launch confirmation returns tokens`() {
     val (_, curve, creator, cursor, o) = guardedPendingLaunch();
     val minter = JettonMinterV2.fromAddress(curve.getCurveData().jettonMinter!);
     val devWallet = JettonWalletV2.fromAddress(minter.getWalletAddress(creator));
-    cursor.executeTill<InternalTransferStep>({ to: devWallet.address });
+    cursor.executeTill<InternalLaunchMint>({ to: devWallet.address });
     expect(curve.getState()).toEqual(CURVE_STATE_INITIALIZING);
     expect(curve.getLaunchProgress().curveReceived).toEqual(true);
     expect(curve.getLaunchProgress().devReceived).toEqual(false);

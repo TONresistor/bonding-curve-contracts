@@ -459,6 +459,104 @@ fun BondingCurveV2.sendTopUpTons(self, from: address, config: SendParams = {}): 
     return net.send(from, genericMsg);
 }
 
+fun BondingCurveV2.sendLaunchConfirmed(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: LaunchConfirmed { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendRetryLaunchSettlement(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: RetryLaunchSettlement { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendFinalizeLaunch(
+    self,
+    from: address,
+    queryId: uint64,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: FinalizeLaunch { queryId },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendProbeLaunchSettlement(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: ProbeLaunchSettlement { queryId, leg },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendLaunchSettlementState(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    completed: bool,
+    amount: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: LaunchSettlementState { queryId, leg, completed, amount },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun BondingCurveV2.sendLaunchMintResolved(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    delivered: bool,
+    failed: bool,
+    amount: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: LaunchMintResolved { queryId, leg, delivered, failed, amount },
+    });
+    return net.send(from, genericMsg);
+}
+
 /// Send message to the contract with a custom body cell
 fun BondingCurveV2.sendAny(
     self,
@@ -505,6 +603,10 @@ fun BondingCurveV2.getVersion(self): int {
 
 fun BondingCurveV2.getProgressBps(self): int {
     return net.runGetMethod(self.address, "get_progress_bps");
+}
+
+fun BondingCurveV2.getLaunchSettlement(self): LaunchSettlementReply {
+    return net.runGetMethod(self.address, "get_launch_settlement");
 }
 
 fun BondingCurveV2.getLaunchOptions(self): LaunchOptions {

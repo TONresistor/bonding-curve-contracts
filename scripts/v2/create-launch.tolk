@@ -5,6 +5,7 @@ import "@acton/emulation/scripts"
 import "@wrappers/BondingCurveMasterV2.gen"
 import "@contracts/v2/bonding-dedust"
 import "@contracts/v2/bonding-math"
+import "@contracts/v2/bonding-messages"
 import "@contracts/v2/bonding-storage"
 import "@contracts/v2/fee-storage"
 import "arguments"
@@ -57,6 +58,14 @@ fun createLaunch(
     println("Launch preview: {}", previewLaunch(options));
     val metadata = beginCell().storeUint(1, 8).storeString(scriptString(metadataUri)).endCell();
     val master = BondingCurveMasterV2.fromAddress(masterAddress);
+    val request = CreateLaunch {
+        queryId: 0,
+        metadata,
+        salt,
+        options: options.toCell(),
+    };
+    val quote = master.getCreateLaunchQuote(wallet.address, request);
+    println("Creation quote: {}", quote);
     master
         .sendCreateLaunch(
             wallet.address,
@@ -64,7 +73,7 @@ fun createLaunch(
             metadata,
             salt,
             options,
-            { value: minimumCreateValue(options), bounce: true },
+            { value: quote.minimumCreateValue, bounce: true },
         )
         .waitForFirstTransaction();
     println(

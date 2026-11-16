@@ -9,6 +9,7 @@ import "buyback-storage"
 import "collector-address"
 import "fee-addresses"
 import "fee-storage"
+import "launch-fees"
 import "wallet-fees"
 import "wallet-messages"
 import "../v1/bonding-config"
@@ -50,6 +51,12 @@ type AllowedMessageToCurve =
     | MigrationJettonRefund
     | TransferNotificationForRecipient
     | TopUpTons
+    | LaunchConfirmed
+    | RetryLaunchSettlement
+    | FinalizeLaunch
+    | ProbeLaunchSettlement
+    | LaunchSettlementState
+    | LaunchMintResolved
 
 type BounceableOutboundOps =
     | AskToTransfer
@@ -64,6 +71,10 @@ type BounceableOutboundOps =
     | CreditCurveFees
     | ResponseWalletAddress
     | ProvideMigrationPoolState
+    | MintLaunchTokens
+    | ConfirmLaunch
+    | FinalizeLaunch
+    | ProbeLaunchSettlement
 
 fun emptyForwardPayload(): slice {
     return beginCell().storeUint(0, 1).toSlice();
@@ -86,6 +97,11 @@ fun onInternalMessage(in: InMessage) {
             val o = config.options.load();
             validateLaunchOptions(o);
             storage.jettonMinter = msg.jettonMinter;
+            storage.settlement = LaunchSettlement {
+                queryId: msg.queryId,
+                preExistingBalance: max(contract.getOriginalBalance() - in.valueCoins, 0),
+                phase: LaunchSettlementPhase.WaitingMints,
+            }.toCell();
             storage.migrationReserve = initialMigrationReserve(o);
             var progress = storage.progress.load();
             progress.protocolTreasury = msg.protocolTreasury;
@@ -113,11 +129,7 @@ fun onInternalMessage(in: InMessage) {
             }
             storage.progress = progress.toCell();
             storage.save();
-            createMessage({ bounce: true, dest: msg.jettonMinter, value: ton("0.22"), body: MintCurveWallet {
-                    queryId: 1,
-                    jettonAmount: o.supply - progress.devTokens,
-                    tonAmount: ton("0.2"),
-                } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+            sendLaunchMint(storage, contract.getAddress(), o.supply - progress.devTokens, 1);
         }
 
         ReturnExcessesBack => {}
@@ -127,8 +139,18 @@ fun onInternalMessage(in: InMessage) {
                 storage.jettonMinter != null && in.senderAddress == storage.jettonMinter!
             ) throw Errors.NotOwner;
             if (storage.dropAdminPending) {
+                if (
+                    storage.settlement != null &&
+                    storage.settlement!.load().phase == LaunchSettlementPhase.WaitingServices
+                ) {
+                    assert (msg.queryId == 3) throw Errors.InvalidMessage;
+                    var settlement = storage.settlement!.load();
+                    settlement.dropInFlight = false;
+                    storage.settlement = settlement.toCell();
+                }
                 storage.dropAdminPending = false;
                 storage.save();
+                advanceLaunch(mutate storage);
             }
         }
         MintDelivered => {
@@ -137,6 +159,29 @@ fun onInternalMessage(in: InMessage) {
                 return;
             }
             val config = storage.config.load();
+            if (storage.settlement != null) {
+                val settlement = storage.settlement!.load();
+                if (settlement.phase != LaunchSettlementPhase.WaitingMints) {
+                    return;
+                }
+                val wallet = msg.queryId == 1
+                    ? calcAddressOfJettonWallet(
+                        contract.getAddress(),
+                        storage.jettonMinter!,
+                        jettonWalletV2CompiledCode(),
+                    )
+                    : calcAddressOfJettonWallet(
+                        config.creator,
+                        storage.jettonMinter!,
+                        jettonWalletV2CompiledCode(),
+                    );
+                if ((msg.queryId != 1 && msg.queryId != 2) || in.senderAddress != wallet) {
+                    return;
+                }
+                recordLaunchMint(mutate storage, msg.queryId, msg.amount);
+                advanceLaunch(mutate storage);
+                return;
+            }
             val creatorWallet = calcAddressOfJettonWallet(
                 config.creator,
                 storage.jettonMinter!,
@@ -332,6 +377,9 @@ fun onInternalMessage(in: InMessage) {
                 storage.state == CURVE_STATE_INITIALIZING && initiator != null &&
                 initiator! == contract.getAddress()
             ) {
+                if (storage.settlement != null) {
+                    return;
+                }
                 var progress = storage.progress.load();
                 if (progress.curveReceived || msg.queryId != 1) {
                     return;
@@ -562,11 +610,15 @@ fun onInternalMessage(in: InMessage) {
                 storage.migration!.load().pendingNativeRefund
                 ? storage.migration!.load().tonAmount
                 : 0 as coins;
-            val tracked = storage.realTonReserve + storage.feeAccrued + storage.migrationReserve +
-                storage.progress.load().creatorAccrued +
-                pendingPrincipal;
             val ownBalance = contract.getOriginalBalance();
             val preInbound = ownBalance > in.valueCoins ? ownBalance - in.valueCoins : 0 as coins;
+            val tracked = storage.realTonReserve + storage.feeAccrued + storage.migrationReserve +
+                storage.progress.load().creatorAccrued +
+                pendingPrincipal +
+                (storage.settlement != null
+                    ? storage.settlement!.load().preExistingBalance +
+                        launchRetainedBuffer(storage, preInbound)
+                    : 0 as coins);
             val floor = tracked + CURVE_STORAGE_RESERVE;
             if (preInbound > floor) {
                 storage.feeAccrued += (preInbound - floor);
@@ -1013,6 +1065,182 @@ fun onInternalMessage(in: InMessage) {
             sendMigrationJettons(storage);
         }
 
+        LaunchConfirmed => {
+            var storage = BondingCurveStorage.load();
+            assert (in.senderAddress == storage.config.load().master) throw Errors.NotOwner;
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            var settlement = storage.settlement!.load();
+            if (
+                settlement.phase != LaunchSettlementPhase.WaitingServices ||
+                msg.queryId != settlement.queryId ||
+                settlement.factoryConfirmed
+            ) {
+                return;
+            }
+            settlement.factoryConfirmed = true;
+            settlement.confirmInFlight = false;
+            storage.settlement = settlement.toCell();
+            storage.save();
+            advanceLaunch(mutate storage);
+        }
+        RetryLaunchSettlement => {
+            var storage = BondingCurveStorage.load();
+            assert (storage.settlement != null) throw Errors.InvalidOp;
+            val settlement = storage.settlement!.load();
+            if (
+                settlement.phase == LaunchSettlementPhase.Complete ||
+                settlement.phase == LaunchSettlementPhase.Cancelled
+            ) {
+                return;
+            }
+            if (
+                in.senderAddress == storage.config.load().creator &&
+                (settlement.phase != LaunchSettlementPhase.Ready || settlement.recoveryPending != 0)
+            ) {
+                assert (in.valueCoins >= launchRetryMinimum(storage)) throw Errors.NotEnoughGas;
+                probeLaunchRecovery(mutate storage);
+                return;
+            }
+            if (
+                settlement.recoveryPending != 0 ||
+                (settlement.phase != LaunchSettlementPhase.WaitingServices &&
+                    settlement.phase != LaunchSettlementPhase.Ready)
+            ) {
+                return;
+            }
+            assert (in.valueCoins >= launchRetryMinimum(storage)) throw Errors.NotEnoughGas;
+            if (settlement.phase == LaunchSettlementPhase.WaitingServices) {
+                requestLaunchServices(mutate storage);
+            }
+            advanceLaunch(mutate storage);
+        }
+        ProbeLaunchSettlement => {
+            assert (
+                in.senderAddress == contract.getAddress() && msg.leg == 4
+            ) throw Errors.NotOwner;
+            var storage = BondingCurveStorage.load();
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            var settlement = storage.settlement!.load();
+            if (msg.queryId != settlement.recoveryId || (settlement.recoveryPending & 16) == 0) {
+                return;
+            }
+            // Same-account FIFO places this barrier after the earlier finalizer, even if it failed without a bounce.
+            settlement.recoveryPending &= ~16;
+            settlement.phase = LaunchSettlementPhase.Ready;
+            storage.settlement = settlement.toCell();
+            storage.save();
+            advanceLaunch(mutate storage);
+        }
+        LaunchSettlementState => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                msg.leg <= 3 && in.senderAddress == launchRecoveryPeer(storage, msg.leg)
+            ) throw Errors.NotOwner;
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            var settlement = storage.settlement!.load();
+            val bit = 1 << msg.leg;
+            if (msg.queryId != settlement.recoveryId || (settlement.recoveryPending & bit) == 0) {
+                return;
+            }
+            if (msg.leg <= 1 && !msg.completed) {
+                resolveMissingLaunchMint(mutate storage, msg.leg);
+                return;
+            }
+            settlement.recoveryPending &= ~bit;
+            if (msg.leg == 2) {
+                settlement.factoryConfirmed = settlement.factoryConfirmed || msg.completed;
+                settlement.confirmInFlight = false;
+            }
+            if (msg.leg == 3) {
+                if (msg.completed) {
+                    storage.dropAdminPending = false;
+                }
+                settlement.dropInFlight = false;
+            }
+            storage.settlement = settlement.toCell();
+            storage.save();
+            if (msg.leg <= 1 && msg.completed) {
+                recordLaunchMint(mutate storage, msg.leg + 1, msg.amount);
+            }
+            if (
+                storage.settlement!.load().recoveryPending == 0 &&
+                storage.settlement!.load().phase == LaunchSettlementPhase.WaitingServices
+            ) {
+                requestLaunchServices(mutate storage);
+            }
+            advanceLaunch(mutate storage);
+        }
+        LaunchMintResolved => {
+            var storage = BondingCurveStorage.load();
+            assert (
+                in.senderAddress == storage.jettonMinter! && msg.leg <= 1
+            ) throw Errors.NotOwner;
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            var settlement = storage.settlement!.load();
+            val bit = 1 << msg.leg;
+            if (
+                msg.queryId != settlement.recoveryId || (settlement.recoveryPending & bit) == 0 ||
+                (settlement.mintResolving & bit) == 0
+            ) {
+                return;
+            }
+            if (msg.failed) {
+                val progress = storage.progress.load();
+                assert (
+                    !(msg.leg == 0 ? progress.curveReceived : progress.devReceived)
+                ) throw Errors.InvalidMessage;
+                cancelLaunch(mutate storage);
+                return;
+            }
+            if (!msg.delivered) {
+                return;
+            }
+            settlement.mintResolving &= ~bit;
+            storage.settlement = settlement.toCell();
+            storage.save();
+            // A direct wallet reply also drains its older MintDelivered TON return before closing.
+            createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: launchRecoveryPeer(
+                    storage,
+                    msg.leg,
+                ), value: launchProbeValue(
+                    contract.getAddress(),
+                    settlement.recoveryId,
+                    msg.leg,
+                ), body: ProbeLaunchSettlement {
+                    queryId: settlement.recoveryId,
+                    leg: msg.leg,
+                } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+        }
+        FinalizeLaunch => {
+            var storage = BondingCurveStorage.load();
+            assert (in.senderAddress == contract.getAddress()) throw Errors.NotOwner;
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            val settlement = storage.settlement!.load();
+            if (
+                settlement.phase != LaunchSettlementPhase.Finalizing ||
+                msg.queryId != settlement.queryId
+            ) {
+                return;
+            }
+            if (settlement.recoveryPending != 0) {
+                var deferred = settlement;
+                deferred.phase = LaunchSettlementPhase.Ready;
+                storage.settlement = deferred.toCell();
+                storage.save();
+                return;
+            }
+            finalizeLaunchSettlement(mutate storage);
+        }
         TopUpTons => {}
 
         else => throw 0xFFFF,
@@ -1073,7 +1301,73 @@ fun onBouncedMessage(in: InMessageBounced) {
             storage.progress = progress.toCell();
             storage.save();
         }
-        DropMinterAdmin => {}
+        DropMinterAdmin => {
+            if (storage.settlement != null && storage.state == CURVE_STATE_INITIALIZING) {
+                assert (in.senderAddress == storage.jettonMinter!) throw Errors.NotOwner;
+                var settlement = storage.settlement!.load();
+                if (
+                    settlement.phase == LaunchSettlementPhase.WaitingServices && parsed.queryId == 3
+                ) {
+                    settlement.dropInFlight = false;
+                    storage.settlement = settlement.toCell();
+                    storage.save();
+                }
+            }
+        }
+        ConfirmLaunch => {
+            assert (in.senderAddress == storage.config.load().master) throw Errors.NotOwner;
+            if (storage.settlement != null && storage.state == CURVE_STATE_INITIALIZING) {
+                var settlement = storage.settlement!.load();
+                if (
+                    settlement.phase == LaunchSettlementPhase.WaitingServices &&
+                    parsed.queryId == settlement.queryId
+                ) {
+                    settlement.confirmInFlight = false;
+                    storage.settlement = settlement.toCell();
+                    storage.save();
+                }
+            }
+        }
+        FinalizeLaunch => {
+            assert (in.senderAddress == contract.getAddress()) throw Errors.NotOwner;
+            if (storage.settlement != null && storage.state == CURVE_STATE_INITIALIZING) {
+                var settlement = storage.settlement!.load();
+                if (
+                    settlement.phase == LaunchSettlementPhase.Finalizing &&
+                    parsed.queryId == settlement.queryId
+                ) {
+                    settlement.phase = LaunchSettlementPhase.Ready;
+                    storage.settlement = settlement.toCell();
+                    storage.save();
+                }
+            }
+        }
+        ProbeLaunchSettlement => {
+            if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+                return;
+            }
+            assert (
+                parsed.leg <= 4 && in.senderAddress == launchRecoveryPeer(storage, parsed.leg)
+            ) throw Errors.NotOwner;
+            var settlement = storage.settlement!.load();
+            if (parsed.queryId != settlement.recoveryId) {
+                return;
+            }
+            if (parsed.leg <= 1) {
+                resolveMissingLaunchMint(mutate storage, parsed.leg);
+                return;
+            }
+            settlement.recoveryPending &= ~(1 << parsed.leg);
+            storage.settlement = settlement.toCell();
+            storage.save();
+            advanceLaunch(mutate storage);
+        }
+        MintLaunchTokens => {
+            assert (in.senderAddress == storage.jettonMinter!) throw Errors.NotOwner;
+            if (storage.state == CURVE_STATE_INITIALIZING) {
+                cancelLaunch(mutate storage);
+            }
+        }
         ProvidePositionState => {}
         ResponseWalletAddress => {}
         ProvideMigrationPoolState => {
@@ -1207,6 +1501,431 @@ fun mintLaunchTokens(
         } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
 }
 
+fun sendLaunchMint(storage: BondingCurveStorage, recipient: address, amount: coins, id: uint64) {
+    val minter = storage.jettonMinter!;
+    createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: minter, value: launchMintFunding(
+            contract.getAddress(),
+            minter,
+            recipient,
+            id,
+            amount,
+            id == 1,
+        ), body: MintLaunchTokens {
+            queryId: id,
+            jettonAmount: amount,
+            mintRecipient: recipient,
+        } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
+
+fun recordLaunchMint(mutate storage: BondingCurveStorage, id: uint64, amount: coins) {
+    if (storage.settlement!.load().phase != LaunchSettlementPhase.WaitingMints) {
+        return;
+    }
+    var progress = storage.progress.load();
+    val config = storage.config.load();
+    if (id == 1 && !progress.curveReceived) {
+        assert (
+            amount == config.options.load().supply - progress.devTokens
+        ) throw Errors.InvalidMessage;
+        progress.curveReceived = true;
+        storage.curveJettonBalance = amount;
+        storage.progress = progress.toCell();
+        storage.save();
+        if (progress.devTokens > 0) {
+            sendLaunchMint(storage, config.creator, progress.devTokens, 2);
+        }
+    } else if (id == 2 && progress.curveReceived && !progress.devReceived) {
+        assert (amount == progress.devTokens && amount > 0) throw Errors.InvalidMessage;
+        progress.devReceived = true;
+        storage.progress = progress.toCell();
+        storage.save();
+    }
+}
+
+fun launchRecoveryPeer(storage: BondingCurveStorage, leg: uint3): address {
+    assert (leg <= 4) throw Errors.InvalidMessage;
+    if (leg == 2) {
+        return storage.config.load().master;
+    }
+    if (leg == 3) {
+        return storage.jettonMinter!;
+    }
+    if (leg == 4) {
+        return contract.getAddress();
+    }
+    return calcAddressOfJettonWallet(
+        leg == 0 ? contract.getAddress() : storage.config.load().creator,
+        storage.jettonMinter!,
+        jettonWalletV2CompiledCode(),
+    );
+}
+
+fun launchRecoveryMask(storage: BondingCurveStorage): uint5 {
+    val settlement = storage.settlement!.load();
+    var mask = settlement.recoveryPending;
+    if (settlement.phase == LaunchSettlementPhase.WaitingMints) {
+        val progress = storage.progress.load();
+        if (!progress.curveReceived) {
+            mask |= 1;
+        } else if (!progress.devReceived && progress.devTokens > 0) {
+            mask |= 2;
+        }
+    }
+    if (settlement.phase == LaunchSettlementPhase.WaitingServices) {
+        if (!settlement.factoryConfirmed) {
+            mask |= 4;
+        }
+        if (storage.dropAdminPending) {
+            mask |= 8;
+        }
+    }
+    if (settlement.phase == LaunchSettlementPhase.Finalizing) {
+        mask |= 16;
+    }
+    return mask;
+}
+
+fun resolveMissingLaunchMint(mutate storage: BondingCurveStorage, leg: uint3) {
+    var settlement = storage.settlement!.load();
+    settlement.mintResolving |= 1 << leg;
+    storage.settlement = settlement.toCell();
+    storage.save();
+    createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: storage.jettonMinter!, value: launchMintResolveValue(
+            contract.getAddress(),
+            storage.jettonMinter!,
+            leg == 0 ? contract.getAddress() : storage.config.load().creator,
+            settlement.recoveryId,
+            leg,
+        ), body: ResolveLaunchMint {
+            queryId: settlement.recoveryId,
+            leg,
+        } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
+
+fun launchRecoveryMinimum(storage: BondingCurveStorage): coins {
+    val mask = launchRecoveryMask(storage);
+    if (mask == 0) {
+        return 0;
+    }
+    val id = storage.settlement!.load().recoveryId;
+    var value = launchGas(LAUNCH_RECOVERY_GAS);
+    var leg: uint3 = 0;
+    repeat (5) {
+        if ((mask & (1 << leg)) != 0) {
+            val funding = leg <= 1
+                ? launchMintResolveValue(
+                    contract.getAddress(),
+                    storage.jettonMinter!,
+                    leg == 0 ? contract.getAddress() : storage.config.load().creator,
+                    id,
+                    leg,
+                ) +
+                    launchProbeValue(contract.getAddress(), id, leg)
+                : launchProbeValue(contract.getAddress(), id, leg);
+            if (leg <= 1) {
+                value += createMessage({ bounce: true, dest: launchRecoveryPeer(
+                        storage,
+                        leg,
+                    ), value: launchProbeValue(
+                        contract.getAddress(),
+                        id,
+                        leg,
+                    ), body: ProbeLaunchSettlement {
+                        queryId: id,
+                        leg,
+                    } }).estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY);
+            }
+            value += funding +
+                createMessage({ bounce: true, dest: launchRecoveryPeer(
+                        storage,
+                        leg,
+                    ), value: funding, body: ProbeLaunchSettlement {
+                        queryId: id,
+                        leg,
+                    } }).estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY);
+        }
+        leg += 1;
+    }
+    return value;
+}
+
+fun probeLaunchRecovery(mutate storage: BondingCurveStorage) {
+    var settlement = storage.settlement!.load();
+    val mask = launchRecoveryMask(storage);
+    if (mask == 0) {
+        advanceLaunch(mutate storage);
+        return;
+    }
+    assert (settlement.recoveryId < (1 << 64) - 1) throw Errors.InvalidOp;
+    settlement.recoveryId += 1;
+    settlement.recoveryPending = mask;
+    settlement.mintResolving = mask & 3;
+    storage.settlement = settlement.toCell();
+    storage.save();
+    // TON whitepaper 2.4.17: replies from the same account to the same recipient are FIFO.
+    // A current probe response therefore follows all older acknowledgements and their TON returns.
+    var leg: uint3 = 0;
+    repeat (5) {
+        if ((mask & (1 << leg)) != 0) {
+            if (leg <= 1) {
+                createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: storage.jettonMinter!, value: launchMintResolveValue(
+                        contract.getAddress(),
+                        storage.jettonMinter!,
+                        leg == 0 ? contract.getAddress() : storage.config.load().creator,
+                        settlement.recoveryId,
+                        leg,
+                    ), body: ResolveLaunchMint {
+                        queryId: settlement.recoveryId,
+                        leg,
+                    } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+            } else {
+                createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: launchRecoveryPeer(
+                        storage,
+                        leg,
+                    ), value: launchProbeValue(
+                        contract.getAddress(),
+                        settlement.recoveryId,
+                        leg,
+                    ), body: ProbeLaunchSettlement {
+                        queryId: settlement.recoveryId,
+                        leg,
+                    } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+            }
+        }
+        leg += 1;
+    }
+}
+
+fun launchRetryMinimum(storage: BondingCurveStorage): coins {
+    if (storage.settlement == null) {
+        return 0;
+    }
+    val phase = storage.settlement!.load().phase;
+    if (phase == LaunchSettlementPhase.Complete || phase == LaunchSettlementPhase.Cancelled) {
+        return 0;
+    }
+    return max(launchServiceRetryMinimum(storage), launchRecoveryMinimum(storage));
+}
+
+fun launchRetainedBuffer(storage: BondingCurveStorage, balance: coins): coins {
+    if (storage.settlement == null) {
+        return 0;
+    }
+    val settlement = storage.settlement!.load();
+    if (settlement.retainedBufferLimit == 0) {
+        return 0;
+    }
+    val pendingPrincipal = storage.migration != null &&
+        storage.migration!.load().pendingNativeRefund
+        ? storage.migration!.load().tonAmount
+        : 0 as coins;
+    val protected = launchProtectedBalance(storage) + pendingPrincipal;
+    return min(settlement.retainedBufferLimit, max(balance - protected, 0));
+}
+
+fun launchProtectedBalance(storage: BondingCurveStorage): coins {
+    return storage.realTonReserve + storage.feeAccrued + storage.migrationReserve +
+        storage.progress.load().creatorAccrued +
+        CURVE_STORAGE_RESERVE +
+        storage.settlement!.load().preExistingBalance;
+}
+
+fun requestLaunchServices(mutate storage: BondingCurveStorage) {
+    var settlement = storage.settlement!.load();
+    val config = storage.config.load();
+    if (!settlement.factoryConfirmed && !settlement.confirmInFlight) {
+        settlement.confirmInFlight = true;
+        createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: config.master, value: launchConfirmValue(
+                contract.getAddress(),
+                settlement.queryId,
+            ), body: ConfirmLaunch {
+                queryId: settlement.queryId,
+                creator: config.creator,
+                salt: config.salt,
+                options: config.options,
+            } }).send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+    }
+    if (storage.dropAdminPending && !settlement.dropInFlight) {
+        settlement.dropInFlight = true;
+        createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: storage.jettonMinter!, value: launchDropValue(
+                contract.getAddress(),
+                3,
+            ), body: DropMinterAdmin { queryId: 3 } }).send(
+            SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+        );
+    }
+    storage.settlement = settlement.toCell();
+    storage.save();
+}
+
+fun advanceLaunch(mutate storage: BondingCurveStorage) {
+    if (storage.settlement == null || storage.state != CURVE_STATE_INITIALIZING) {
+        return;
+    }
+    var settlement = storage.settlement!.load();
+    if (settlement.recoveryPending != 0) {
+        return;
+    }
+    val progress = storage.progress.load();
+    if (
+        settlement.phase == LaunchSettlementPhase.WaitingMints && progress.curveReceived &&
+        progress.devReceived
+    ) {
+        settlement.phase = LaunchSettlementPhase.WaitingServices;
+        storage.settlement = settlement.toCell();
+        storage.dropAdminPending = true;
+        storage.save();
+        createMessage({ bounce: false, dest: curveCollector(
+                storage,
+            ), value: LAUNCH_COLLECTOR_VALUE, body: TopUpTons {} }).send(
+            SEND_MODE_PAY_FEES_SEPARATELY,
+        );
+        requestLaunchServices(mutate storage);
+        return;
+    }
+    if (
+        settlement.phase == LaunchSettlementPhase.WaitingServices && settlement.factoryConfirmed &&
+        !storage.dropAdminPending
+    ) {
+        settlement.phase = LaunchSettlementPhase.Ready;
+        storage.settlement = settlement.toCell();
+        storage.save();
+    }
+    if (settlement.phase == LaunchSettlementPhase.Ready) {
+        val protected = launchProtectedBalance(storage);
+        val available = contract.getOriginalBalance() - protected;
+        if (
+            available >=
+            launchFinalizeMinimum(
+                contract.getAddress(),
+                storage.config.load().creator,
+                settlement.queryId,
+            )
+        ) {
+            settlement.phase = LaunchSettlementPhase.Finalizing;
+            storage.settlement = settlement.toCell();
+            storage.save();
+            reserveToncoinsOnBalance(
+                protected,
+                RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
+            createMessage({ bounce: BounceMode.Only256BitsOfBody, dest: contract.getAddress(), value: 0, body: FinalizeLaunch {
+                    queryId: settlement.queryId,
+                } }).send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+        }
+    }
+}
+
+fun launchServiceRetryMinimum(storage: BondingCurveStorage): coins {
+    if (storage.settlement == null) {
+        return 0;
+    }
+    val settlement = storage.settlement!.load();
+    if (settlement.phase == LaunchSettlementPhase.Ready) {
+        return launchFinalizeMinimum(
+            contract.getAddress(),
+            storage.config.load().creator,
+            settlement.queryId,
+        );
+    }
+    if (settlement.phase != LaunchSettlementPhase.WaitingServices) {
+        return 0;
+    }
+    if (
+        (settlement.factoryConfirmed || settlement.confirmInFlight) &&
+        (!storage.dropAdminPending || settlement.dropInFlight)
+    ) {
+        return 0;
+    }
+    var amount = launchGas(LAUNCH_CURVE_SERVICE_GAS);
+    val config = storage.config.load();
+    if (!settlement.factoryConfirmed && !settlement.confirmInFlight) {
+        val value = launchConfirmValue(contract.getAddress(), settlement.queryId);
+        amount += value +
+            createMessage({ bounce: true, dest: config.master, value, body: ConfirmLaunch {
+                    queryId: settlement.queryId,
+                    creator: config.creator,
+                    salt: config.salt,
+                    options: config.options,
+                } }).estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY);
+    }
+    if (storage.dropAdminPending && !settlement.dropInFlight) {
+        val value = launchDropValue(contract.getAddress(), 3);
+        amount += value +
+            createMessage({ bounce: true, dest: storage.jettonMinter!, value, body: DropMinterAdmin {
+                    queryId: 3,
+                } }).estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY);
+    }
+    return amount;
+}
+
+get fun get_launch_settlement(): LaunchSettlementReply {
+    val storage = BondingCurveStorage.load();
+    val progress = storage.progress.load();
+    val settlement = storage.settlement != null ? storage.settlement!.load() : null;
+    val adminDropped = settlement != null &&
+        settlement!.phase != LaunchSettlementPhase.WaitingMints &&
+        settlement!.phase != LaunchSettlementPhase.Cancelled &&
+        !storage.dropAdminPending;
+    return {
+        settlement,
+        curveReceived: progress.curveReceived,
+        devReceived: progress.devReceived,
+        adminDropped,
+        minimumRetryValue: launchRetryMinimum(storage),
+        retainedBuffer: launchRetainedBuffer(storage, contract.getOriginalBalance()),
+    };
+}
+
+fun finalizeLaunchSettlement(mutate storage: BondingCurveStorage) {
+    var settlement = storage.settlement!.load();
+    val config = storage.config.load();
+    val migrate = shouldGraduate(storage.realTonReserve, config.graduationThreshold);
+    val kick: coins = migrate ? DEDUST_GRADUATE_GAS_BUDGET : 0 as coins;
+    assert (!migrate || storage.migrationReserve >= kick) throw Errors.NotEnoughGas;
+    val protected = launchProtectedBalance(storage) - kick;
+    reserveToncoinsOnBalance(
+        protected,
+        RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+    );
+    settlement.phase = LaunchSettlementPhase.Complete;
+    storage.settlement = settlement.toCell();
+    storage.state = migrate ? CURVE_STATE_FROZEN : CURVE_STATE_TRADING;
+    storage.save();
+    val event = createExternalLogMessage({ dest: ExtOutLogBucket {
+            topic: TOPIC_LAUNCH_INITIALIZED,
+        }, body: LaunchInitializedEvent {
+            status: launchStatus(storage.state),
+            realTonReserve: storage.realTonReserve,
+            curveJettonBalance: storage.curveJettonBalance,
+        } });
+    event.send(SEND_MODE_REGULAR);
+    var fees = event.estimateFeeWithoutSending(SEND_MODE_REGULAR);
+    if (migrate) {
+        val graduate = createMessage({ bounce: true, dest: contract.getAddress(), value: kick, body: Graduate {
+                queryId: 4,
+            } });
+        fees += graduate.estimateFeeWithoutSending(SEND_MODE_PAY_FEES_SEPARATELY);
+        graduate.send(SEND_MODE_PAY_FEES_SEPARATELY | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+    }
+    val refund = createMessage({ bounce: false, dest: config.creator, value: 0, body: ReturnExcessesBack {
+            queryId: settlement.queryId,
+        } });
+    if (
+        contract.getOriginalBalance() - protected - kick >
+        launchGas(LAUNCH_CURVE_FINALIZE_GAS) + fees +
+        refund.estimateFeeWithoutSending(SEND_MODE_REGULAR)
+    ) {
+        refund.send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+    } else {
+        // Keep sub-budget finalization dust as an operating buffer, never protocol fees.
+        settlement.retainedBufferLimit = launchGas(LAUNCH_CURVE_FINALIZE_GAS) + fees +
+            refund.estimateFeeWithoutSending(SEND_MODE_REGULAR);
+        storage.settlement = settlement.toCell();
+        storage.save();
+    }
+}
+
 fun finishLaunch(mutate storage: BondingCurveStorage) {
     val progress = storage.progress.load();
     if (progress.curveReceived && progress.devReceived) {
@@ -1249,6 +1968,13 @@ fun finishLaunch(mutate storage: BondingCurveStorage) {
 }
 
 fun cancelLaunch(mutate storage: BondingCurveStorage) {
+    if (storage.settlement != null) {
+        var settlement = storage.settlement!.load();
+        settlement.phase = LaunchSettlementPhase.Cancelled;
+        settlement.recoveryPending = 0;
+        settlement.mintResolving = 0;
+        storage.settlement = settlement.toCell();
+    }
     storage.state = CURVE_STATE_CANCELLED;
     storage.realTonReserve = 0;
     storage.feeAccrued = 0;
@@ -1264,7 +1990,13 @@ fun cancelLaunch(mutate storage: BondingCurveStorage) {
             salt: config.salt,
             options: config.options,
         } }).send(SEND_MODE_PAY_FEES_SEPARATELY);
-    reserveToncoinsOnBalance(CURVE_STORAGE_RESERVE, RESERVE_MODE_AT_MOST);
+    reserveToncoinsOnBalance(
+        CURVE_STORAGE_RESERVE +
+            (storage.settlement != null
+                ? storage.settlement!.load().preExistingBalance
+                : 0 as coins),
+        RESERVE_MODE_AT_MOST,
+    );
     createMessage({
         bounce: false,
         dest: storage.config.load().creator,

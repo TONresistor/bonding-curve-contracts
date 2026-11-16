@@ -1,3 +1,11 @@
+import "wallet-messages"
+
+struct LaunchMintReceipt {
+    queryId: uint64
+    amount: coins
+    curve: address
+}
+
 struct WalletStorageV2 {
     jettonBalance: coins
     ownerAddress: address
@@ -24,7 +32,29 @@ fun WalletStorageV2.refund(self): CurveWalletRefund {
 }
 
 fun WalletStorageV2.setRefund(mutate self, refund: CurveWalletRefund) {
-    self.protection = beginCell().storeBool(true).storeRef(refund.toCell()).toSlice();
+    val receipt = self.launchReceipt();
+    var extra = beginCell().storeBool(true).storeRef(refund.toCell());
+    if (receipt != null) {
+        extra.storeRef(receipt!);
+    }
+    self.protection = extra.toSlice();
+}
+
+fun WalletStorageV2.launchReceipt(self): Cell<LaunchMintReceipt>? {
+    if (self.protection.remainingRefsCount() < 2) {
+        return null;
+    }
+    var extra = self.protection;
+    extra.loadRef();
+    return extra.loadRef() as Cell<LaunchMintReceipt>;
+}
+
+fun WalletStorageV2.setLaunchReceipt(mutate self, receipt: LaunchMintReceipt) {
+    self.protection = beginCell()
+        .storeBool(self.isCurveWallet())
+        .storeRef(self.refund().toCell())
+        .storeRef(receipt.toCell())
+        .toSlice();
 }
 
 fun WalletStorageV2.load(): WalletStorageV2 {

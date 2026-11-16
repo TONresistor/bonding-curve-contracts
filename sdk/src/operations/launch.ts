@@ -1,7 +1,7 @@
 import { Address, beginCell, Dictionary } from '@ton/core';
 import { BondingCurveMasterV2 as Master } from '../generated/BondingCurveMasterV2.gen.js';
 import { LaunchConfig, launchOptions, NANO } from '../options.js';
-import { basechain, uint } from '../validation.js';
+import { basechain, coins, uint } from '../validation.js';
 import { deployment, query, transaction, Transaction } from '../transport.js';
 
 export function createLaunch(
@@ -10,11 +10,12 @@ export function createLaunch(
   metadataUri: string,
   salt: bigint,
   queryId = 0n,
+  creationValue?: bigint,
 ): Transaction {
   const options = launchOptions(config);
   return transaction(
     master,
-    options.devBuyAmount + NANO,
+    coins(creationValue ?? options.devBuyAmount + NANO, 'creation value'),
     Master.createCellOfCreateLaunch({
       ...query(queryId),
       salt: uint(salt, 64, 'salt'),

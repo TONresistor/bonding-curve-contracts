@@ -96,7 +96,7 @@ get fun `test v2: launch discovery precedes initialization and dev delivery gate
             null,
     ).toEqual(true);
     expect(curve.getLaunchStatus()).toEqual(LaunchStatus.Initializing);
-    val mintedCurve = cursor.executeTill<TransferNotificationForRecipient>({ to: curve.address });
+    val mintedCurve = cursor.executeTill<MintDelivered>({ to: curve.address });
     expect(
         mintedCurve.findTopicEvent<LaunchInitializedEvent>({ from: curve.address, to: eventTopic(
                 TOPIC_LAUNCH_INITIALIZED,
@@ -112,7 +112,16 @@ get fun `test v2: launch discovery precedes initialization and dev delivery gate
         .fromAddress(created!.loadBody().minterAddress)
         .getWalletAddress(owner);
     val delivered = cursor.executeTill<MintDelivered>({ from: devWallet, to: curve.address });
-    val event = delivered.findTopicEvent<LaunchInitializedEvent>({ from: curve.address, to: eventTopic(
+    expect(
+        delivered.findTopicEvent<LaunchInitializedEvent>({ from: curve.address, to: eventTopic(
+                TOPIC_LAUNCH_INITIALIZED,
+            ) }) ==
+            null,
+    ).toEqual(true);
+    expect(curve.getState()).toEqual(CURVE_STATE_INITIALIZING);
+    val rest = cursor.executeAllRemaining();
+    cursor.close();
+    val event = rest.findTopicEvent<LaunchInitializedEvent>({ from: curve.address, to: eventTopic(
             TOPIC_LAUNCH_INITIALIZED,
         ) });
     expect(event != null).toEqual(true);
@@ -122,14 +131,6 @@ get fun `test v2: launch discovery precedes initialization and dev delivery gate
     expect(payload.curveJettonBalance).toEqual(curve.getCurveData().curveJettonBalance);
     val minter = JettonMinterV2.fromAddress(created!.loadBody().minterAddress);
     expect(v2Tokens(minter, owner)).toEqual(curve.getLaunchProgress().devTokens);
-    val rest = cursor.executeAllRemaining();
-    cursor.close();
-    expect(
-        rest.findTopicEvent<LaunchInitializedEvent>({ from: curve.address, to: eventTopic(
-                TOPIC_LAUNCH_INITIALIZED,
-            ) }) ==
-            null,
-    ).toEqual(true);
     val duplicate = curve.sendMintDelivered(
         minter.getWalletAddress(owner),
         2,
@@ -191,17 +192,17 @@ get fun `test v2: failed dev mint cancels without emitting initialized`() {
     val options = eventOptions(ton("100"));
     val curve = BondingCurveV2.fromAddress(master.getLaunchAddress(owner, 7, options));
     val cursor = eventLaunch(master, owner, options);
-    cursor.executeTill<TransferNotificationForRecipient>({ to: curve.address });
+    cursor.executeTill<MintDelivered>({ to: curve.address });
     val original = testing.getConfig();
     var expensive = original;
     var prices = expensive.getGasPrices(BASECHAIN);
     var other = prices.other;
-    other.gasPrice *= 1000;
+    other.gasPrice *= 100;
     prices.other = other;
     expensive.setGasPrices(prices, BASECHAIN);
     testing.setConfig(expensive);
-    val failed = cursor.executeTill<MintNewJettons>({ to: curve.getCurveData().jettonMinter! });
-    expect(failed).toHaveFailedTx<MintNewJettons>({ to: curve
+    val failed = cursor.executeTill<MintLaunchTokens>({ to: curve.getCurveData().jettonMinter! });
+    expect(failed).toHaveFailedTx<MintLaunchTokens>({ to: curve
             .getCurveData()
             .jettonMinter!, exitCode: 48 });
     testing.setConfig(original);

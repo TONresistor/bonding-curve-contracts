@@ -26,6 +26,9 @@ type AllowedMessageToWallet =
     | InternalTransferStep
     | InternalTransferTracked
     | InternalCurveMint
+    | InternalLaunchMint
+    | ProbeLaunchSettlement
+    | InspectLaunchMint
     | TopUpTons
 
 type BounceOpToHandle =
@@ -94,6 +97,83 @@ fun onInternalMessage(in: InMessage) {
     val msg = lazy AllowedMessageToWallet.fromSlice(in.body);
 
     match (msg) {
+        InspectLaunchMint => {
+            var storage = WalletStorageV2.load();
+            assert (
+                in.senderAddress == storage.minterAddress && msg.leg <= 1
+            ) throw ERROR_NOT_VALID_WALLET;
+            val cached = storage.launchReceipt();
+            var delivered = false;
+            var amount: coins = 0;
+            if (cached != null) {
+                val receipt = cached!.load();
+                delivered = receipt.queryId == msg.leg + 1 && receipt.curve == msg.curve;
+                amount = receipt.amount;
+            }
+            reserveToncoinsOnBalance(
+                max(contract.getOriginalBalance() - in.valueCoins, 0),
+                RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
+            createMessage({ bounce: false, dest: in.senderAddress, value: 0, body: LaunchMintInspection {
+                    queryId: msg.queryId,
+                    leg: msg.leg,
+                    delivered,
+                    amount,
+                } }).send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+        }
+        ProbeLaunchSettlement => {
+            assert (msg.leg <= 1) throw Errors.InvalidMessage;
+            val storage = WalletStorageV2.load();
+            val cached = storage.launchReceipt();
+            if (cached != null) {
+                val receipt = cached!.load();
+                assert (receipt.curve == in.senderAddress) throw ERROR_NOT_OWNER;
+                replyLaunchSettlement(
+                    in.senderAddress,
+                    msg.queryId,
+                    msg.leg,
+                    receipt.queryId == msg.leg + 1,
+                    receipt.amount,
+                    in.valueCoins,
+                    0,
+                );
+            } else {
+                replyLaunchSettlement(
+                    in.senderAddress,
+                    msg.queryId,
+                    msg.leg,
+                    false,
+                    0,
+                    in.valueCoins,
+                    0,
+                );
+            }
+        }
+        InternalLaunchMint => {
+            var storage = WalletStorageV2.load();
+            assert (in.senderAddress == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
+            assert (msg.jettonAmount > 0) throw Errors.InvalidMessage;
+            assert (msg.queryId == (msg.protect ? 1 : 2)) throw Errors.InvalidMessage;
+            assert (storage.launchReceipt() == null) throw Errors.InvalidOp;
+            if (msg.protect) {
+                assert (
+                    storage.ownerAddress == msg.curve && !storage.isCurveWallet()
+                ) throw Errors.InvalidOp;
+                storage.protection = beginCell().storeBool(true).toSlice();
+            }
+            storage.jettonBalance += msg.jettonAmount;
+            storage.setLaunchReceipt({ queryId: msg.queryId, amount: msg.jettonAmount, curve: msg.curve });
+            storage.save();
+            val prior = max(contract.getOriginalBalance() - in.valueCoins, 0);
+            reserveToncoinsOnBalance(
+                max(prior, walletStorageReserve()),
+                RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+            );
+            createMessage({ bounce: false, dest: msg.curve, value: 0, body: MintDelivered {
+                    queryId: msg.queryId,
+                    amount: msg.jettonAmount,
+                } }).send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+        }
         InternalCurveMint => {
             receiveTokens(
                 in.senderAddress,
@@ -293,7 +373,11 @@ fun receiveTokens(
     if (protect) {
         assert (sender == storage.minterAddress) throw ERROR_NOT_VALID_WALLET;
         assert (!storage.isCurveWallet()) throw Errors.InvalidOp;
+        val receipt = storage.launchReceipt();
         storage.protection = beginCell().storeBool(true).toSlice();
+        if (receipt != null) {
+            storage.setLaunchReceipt(receipt!.load());
+        }
     }
     if (sender != storage.minterAddress) {
         assert (

@@ -5,10 +5,10 @@ import "../v1/sharding"
 
 // Bounds include the V2 bytecode, maximum wallet data and account overhead.
 // Tests check them against the compiled code and deployed wallet storage.
-const V2_WALLET_STORAGE_BITS = 21504
-const V2_WALLET_STORAGE_CELLS = 40
+const V2_WALLET_STORAGE_BITS = 26624
+const V2_WALLET_STORAGE_CELLS = 48
 const V2_TRANSFER_GAS = 9000
-const V2_RECEIVE_GAS = 16000
+const V2_RECEIVE_GAS = 20800
 const V2_BURN_GAS = 6000
 const V2_BURN_NOTIFICATION_GAS = 5500
 

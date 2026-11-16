@@ -2,14 +2,14 @@ import { Address } from '@ton/core';
 import { FeeCollectorV2 } from './generated/FeeCollectorV2.gen.js';
 import { connectContract, ProviderFactory, readJettonData } from './contracts.js';
 import { BondingCurveV2 } from './generated/BondingCurveV2.gen.js';
-import { BondingCurveMasterV2 } from './generated/BondingCurveMasterV2.gen.js';
+import { BondingCurveMasterV2, CreateLaunch } from './generated/BondingCurveMasterV2.gen.js';
 import { JettonMinterV2 } from './generated/JettonMinterV2.gen.js';
 import { JettonWalletV2 } from './generated/JettonWalletV2.gen.js';
 import { FeeSplitterV2 } from './generated/FeeSplitterV2.gen.js';
 import { BuybackBurnV2 } from './generated/BuybackBurnV2.gen.js';
 import { LaunchConfig, launchOptions, minimumOutput } from './options.js';
 import { basechain, coins, uint } from './validation.js';
-import { buy, sell } from './operations/index.js';
+import { buy, sell, createLaunch } from './operations/index.js';
 
 export class LaunchpadV2 {
   constructor(private readonly provider: ProviderFactory) {}
@@ -40,6 +40,33 @@ export class LaunchpadV2 {
   }
   getLaunchStatus(curve: Address) {
     return this.curve(curve).getLaunchStatus();
+  }
+  getLaunchSettlement(curve: Address) {
+    return this.curve(curve).getLaunchSettlement();
+  }
+  async prepareLaunch(
+    master: Address,
+    creator: Address,
+    config: LaunchConfig,
+    metadataUri: string,
+    salt: bigint,
+    queryId = 0n,
+  ) {
+    const request = createLaunch(master, config, metadataUri, salt, queryId);
+    const quote = await this.master(master).getCreateLaunchQuote(basechain(creator), {
+      ref: CreateLaunch.fromSlice(request.body.beginParse()),
+    });
+    return {
+      quote,
+      transaction: createLaunch(
+        master,
+        config,
+        metadataUri,
+        salt,
+        queryId,
+        quote.minimumCreateValue,
+      ),
+    };
   }
   getCurveData(curve: Address) {
     return this.curve(curve).getCurveData();

@@ -108,7 +108,7 @@ get fun `test v2: admin drop clears pending and fee flush does not repeat it`() 
     expect(trace.findTransaction<DropMinterAdmin>({ to: minter.address }) == null).toEqual(true);
 }
 
-get fun `test v2: delayed admin acknowledgment can be retried without reopening rights`() {
+get fun `test v2: delayed admin acknowledgment is awaited without reopening rights`() {
     val owner = testing.treasury("admin-delayed").address;
     val (curve, minter, cursor) = practicePending(owner);
     cursor.executeTill<DropMinterAdmin>({ to: minter.address });
@@ -117,11 +117,22 @@ get fun `test v2: delayed admin acknowledgment can be retried without reopening 
     expect(
         curve.sendMinterAdminDropped(owner, 3, { value: ton("0.05") }),
     ).toHaveFailedTx<MinterAdminDropped>({ to: curve.address, exitCode: 73 });
-    val retry = curve.sendFlushFees(owner, 4, { value: ton("0.1") });
-    expect(retry).toHaveSuccessfulTx<DropMinterAdmin>({ to: minter.address });
-    expect(curve.getCurveData().dropAdminPending).toEqual(false);
+    val retry = testing.createTraceIterationCursor(
+        owner,
+        createMessage({ bounce: true, dest: curve.address, value: ton("0.1"), body: RetryLaunchSettlement {
+                queryId: 4,
+            } }),
+    );
+    val requested = retry.executeN(1);
+    expect(
+        requested.findTransaction<DropMinterAdmin>({ to: minter.address }) == null,
+    ).toEqual(true);
+    expect(curve.getCurveData().dropAdminPending).toEqual(true);
+    // Deliver the older minter acknowledgement before its probe reply (same-sender FIFO).
     cursor.executeAllRemaining();
     cursor.close();
+    retry.executeAllRemaining();
+    retry.close();
     expect(curve.getCurveData().dropAdminPending).toEqual(false);
     expect(minter.getJettonData().mintable).toEqual(false);
 }
@@ -130,24 +141,30 @@ get fun `test v2: failed admin drop stays pending until a funded retry succeeds`
     val owner = testing.treasury("admin-retry").address;
     val (curve, minter, cursor) = practicePending(owner);
     cursor.executeTill<MintDelivered>({ from: minter.getWalletAddress(owner), to: curve.address });
+    cursor.executeTill<ConfirmLaunch>();
     val original = testing.getConfig();
     var expensive = original;
     var prices = expensive.getGasPrices(BASECHAIN);
     var other = prices.other;
-    other.gasPrice *= 1000;
+    other.gasPrice *= 50;
     prices.other = other;
     expensive.setGasPrices(prices, BASECHAIN);
     testing.setConfig(expensive);
     val failed = cursor.executeTill<DropMinterAdmin>({ to: minter.address });
     expect(
-        failed.findTransaction<DropMinterAdmin>({ to: minter.address, success: false }) != null,
+        failed.findTransaction<DropMinterAdmin>({ to: minter.address, success: false, exitCode: 48 }) !=
+            null,
     ).toEqual(true);
     testing.setConfig(original);
     cursor.executeAllRemaining();
     cursor.close();
     expect(curve.getCurveData().dropAdminPending).toEqual(true);
     expect(minter.getJettonData().adminAddress).toEqual(curve.address);
-    curve.sendFlushFees(owner, 5, { value: ton("0.1") });
+    curve.sendRetryLaunchSettlement(
+        owner,
+        5,
+        { value: curve.getLaunchSettlement().minimumRetryValue },
+    );
     expect(curve.getCurveData().dropAdminPending).toEqual(false);
     expect(minter.getJettonData().adminAddress == null).toEqual(true);
 }
@@ -171,6 +188,13 @@ get fun `test v2: wallet reserve covers compiled code maximum data and actual fi
                     queryId: (1 << 64) - 1,
                     amount: (1 << 120) - 1,
                     depositGeneration: (1 << 64) - 1,
+                }.toCell(),
+            )
+            .storeRef(
+                LaunchMintReceipt {
+                    queryId: 1,
+                    amount: (1 << 120) - 1 as coins,
+                    curve: owner,
                 }.toCell(),
             )
             .toSlice(),

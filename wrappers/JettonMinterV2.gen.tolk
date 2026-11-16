@@ -8,9 +8,10 @@ import "@acton/emulation/network"
 import "@acton/testing/assert"
 import "@contracts/v1/messages"
 import "@contracts/v1/storage"
+import "@contracts/v2/minter-storage"
 import "@contracts/v2/wallet-messages"
 
-/// Storage `MinterStorage` is defined in `@contracts/v1/storage`
+/// Storage `MinterStorageV2` is defined in `@contracts/v2/minter-storage`
 struct JettonMinterV2 {
     address: address
     stateInit: ContractState? = null
@@ -19,7 +20,7 @@ struct JettonMinterV2 {
 
 /// Creates a contract wrapper instance from the storage data
 fun JettonMinterV2.fromStorage(
-    storage: MinterStorage,
+    storage: MinterStorageV2,
     toShard: AddressShardingOptions? = null,
     workchain: int8 = BASECHAIN,
 ): JettonMinterV2 {
@@ -89,6 +90,73 @@ fun JettonMinterV2.sendMintCurveWallet(
         value: config.value,
         dest: self.address,
         body: MintCurveWallet { queryId, jettonAmount, tonAmount },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonMinterV2.sendMintLaunchTokens(
+    self,
+    from: address,
+    queryId: uint64,
+    jettonAmount: coins,
+    mintRecipient: address,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: MintLaunchTokens { queryId, jettonAmount, mintRecipient },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonMinterV2.sendProbeLaunchSettlement(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: ProbeLaunchSettlement { queryId, leg },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonMinterV2.sendResolveLaunchMint(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: ResolveLaunchMint { queryId, leg },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonMinterV2.sendLaunchMintInspection(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    delivered: bool,
+    amount: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: LaunchMintInspection { queryId, leg, delivered, amount },
     });
     return net.send(from, genericMsg);
 }

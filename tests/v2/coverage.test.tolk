@@ -184,9 +184,7 @@ get fun `test v2: dev buy one nanoton below at and above migration threshold`() 
                         } }),
                 );
                 cursor.executeTill<InitializeCurve>({ to: curve.address });
-                while (curve.getState() == CURVE_STATE_INITIALIZING) {
-                    cursor.executeTill<MintDelivered>({ to: curve.address });
-                }
+                cursor.executeTill<FinalizeLaunch>({ to: curve.address });
                 expect(curve.getCurveData().realTonReserve).toEqual(target);
                 expect(curve.getState()).toEqual(
                     delta < 0 ? CURVE_STATE_TRADING : CURVE_STATE_FROZEN,

@@ -164,12 +164,12 @@ get fun `test v2: failed mint cancels launch and refunds dev funds once`() {
     var expensive = original;
     var prices = expensive.getGasPrices(BASECHAIN);
     var other = prices.other;
-    other.gasPrice *= 1000;
+    other.gasPrice *= 100;
     prices.other = other;
     expensive.setGasPrices(prices, BASECHAIN);
     testing.setConfig(expensive);
-    val failed = cursor.executeTill<MintCurveWallet>({ to: minter });
-    expect(failed).toHaveFailedTx<MintCurveWallet>({ to: minter, exitCode: 48 });
+    val failed = cursor.executeTill<MintLaunchTokens>({ to: minter });
+    expect(failed).toHaveFailedTx<MintLaunchTokens>({ to: minter, exitCode: 48 });
     testing.setConfig(original);
     val recovery = cursor.executeAllRemaining();
     cursor.close();

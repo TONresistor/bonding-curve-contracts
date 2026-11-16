@@ -1,6 +1,7 @@
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
 import "@acton/testing/expect"
+import "@wrappers/BondingCurveMasterV2.gen"
 import "@wrappers/BondingCurveV2.gen"
 import "@wrappers/JettonMinterV2.gen"
 import "@contracts/v1/bonding-config"
@@ -31,50 +32,20 @@ fun thresholdLaunch(threshold: coins, target: coins, salt: uint64): (
         minDevTokens: 0,
         graduationThreshold: threshold,
     };
-    val curve = BondingCurveV2.fromStorage({
-        state: CURVE_STATE_INITIALIZING,
-        jettonMinter: null,
-        virtualTonReserve: threshold / 5,
-        realTonReserve: 0,
-        curveJettonBalance: 0,
-        feeAccrued: 0,
-        migrationReserve: 0,
-        config: LaunchConfig {
-            master: creator,
-            creator,
-            salt,
-            curveSupply: supply * 9 / 10,
-            dexReserveSupply: supply / 10,
-            graduationThreshold: threshold,
-            options: options.toCell(),
-        }.toCell(),
-        dropAdminPending: false,
-        pendingBuyTonInNet: 0,
-        progress: LaunchProgress {
-            protocolTreasury: null,
-            curveReceived: false,
-            devReceived: false,
-            devTokens: 0,
-            creatorAccrued: 0,
-        }.toCell(),
-    });
-    curve.deploy(creator, { value: ton("2") });
-    val minter = JettonMinterV2.fromStorage({ totalSupply: 0, adminAddress: curve.address, nextAdminAddress: null, metadata: beginCell().endCell() });
-    minter.deploy(creator, { value: ton("0.3") });
+    val master = BondingCurveMasterV2.fromStorage({ admin: creator, nextAdmin: null, treasury: creator, totalLaunches: 0, feesBalance: 0 });
+    master.deploy(creator, { value: ton("2") });
+    val curve = BondingCurveV2.fromAddress(master.getLaunchAddress(creator, salt, options));
     val cursor = testing.createTraceIterationCursor(
         creator,
-        createMessage({ bounce: true, dest: curve.address, value: dev +
-                ton("1"), body: InitializeCurve {
+        createMessage({ bounce: true, dest: master.address, value: dev +
+                ton("1"), body: CreateLaunch {
                 queryId: 1,
-                jettonMinter: minter.address,
-                refundTo: creator,
-                protocolTreasury: creator,
+                metadata: beginCell().endCell(),
+                salt,
+                options: options.toCell(),
             } }),
     );
-    cursor.executeTill<InitializeCurve>({ to: curve.address });
-    while (curve.getState() == CURVE_STATE_INITIALIZING) {
-        cursor.executeTill<MintDelivered>({ to: curve.address });
-    }
+    cursor.executeTill<FinalizeLaunch>({ to: curve.address });
     return (curve, creator, cursor);
 }
 

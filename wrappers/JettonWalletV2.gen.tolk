@@ -220,6 +220,57 @@ fun JettonWalletV2.sendInternalCurveMint(
     return net.send(from, genericMsg);
 }
 
+fun JettonWalletV2.sendInternalLaunchMint(
+    self,
+    from: address,
+    queryId: uint64,
+    jettonAmount: coins,
+    curve: address,
+    protect: bool,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: InternalLaunchMint { queryId, jettonAmount, curve, protect },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonWalletV2.sendProbeLaunchSettlement(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: ProbeLaunchSettlement { queryId, leg },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun JettonWalletV2.sendInspectLaunchMint(
+    self,
+    from: address,
+    queryId: uint64,
+    leg: uint3,
+    curve: address,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: InspectLaunchMint { queryId, leg, curve },
+    });
+    return net.send(from, genericMsg);
+}
+
 fun JettonWalletV2.sendTopUpTons(self, from: address, config: SendParams = {}): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,

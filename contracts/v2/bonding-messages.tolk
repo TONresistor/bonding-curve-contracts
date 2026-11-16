@@ -1,5 +1,17 @@
 import "bonding-storage"
 
+struct (0xa0a0b082) LaunchConfirmed {
+    queryId: uint64
+}
+
+struct (0xa0a0b083) RetryLaunchSettlement {
+    queryId: uint64
+}
+
+struct (0xa0a0b084) FinalizeLaunch {
+    queryId: uint64
+}
+
 struct (0xa0a0b001) CreateLaunch {
     queryId: uint64
     metadata: cell

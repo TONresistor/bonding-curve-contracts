@@ -12,6 +12,72 @@ const wallet = Address.parseRaw('0:' + '33'.repeat(32));
 const config = { supplyTokens: 1_000_000_000, creatorFeeBps: 100 };
 const hash = (cell) => BigInt('0x' + cell.hash().toString('hex')).toString();
 
+test('prepareLaunch uses the factory quote without changing the launch request', async () => {
+  const uri = 'https://example.com/quoted-token.json';
+  const expected = sdk.createLaunch(curve, config, uri, 7n, 42n);
+  const minimum = 490_000_000n;
+  let calls = 0;
+  const client = new sdk.LaunchpadV2((address) => ({
+    get: async (method, args) => {
+      calls++;
+      assert.equal(address.toRawString(), curve.toRawString());
+      assert.equal(method, 'get_create_launch_quote');
+      assert.equal(args[1].cell.hash().toString('hex'), expected.body.hash().toString('hex'));
+      return {
+        stack: new TupleReader(
+          [minimum, 200_000_000n, 0n, 100_000_000n, 190_000_000n].map((value) => ({
+            type: 'int',
+            value,
+          })),
+        ),
+      };
+    },
+  }));
+  const prepared = await client.prepareLaunch(curve, owner, config, uri, 7n, 42n);
+  assert.equal(calls, 1);
+  assert.equal(prepared.quote.minimumCreateValue, minimum);
+  assert.equal(prepared.transaction.value, minimum);
+  assert.equal(
+    prepared.transaction.body.hash().toString('hex'),
+    expected.body.hash().toString('hex'),
+  );
+  assert.equal(expected.value, sdk.NANO);
+  assert.equal(sdk.createLaunch(curve, config, uri, 7n, 42n, minimum).value, minimum);
+  assert.throws(() => sdk.createLaunch(curve, config, uri, 7n, 42n, -1n));
+});
+
+test('launch settlement getter decodes pending state and absent progress', async () => {
+  let present = true;
+  const client = new sdk.LaunchpadV2(() => ({
+    get: async (method) => {
+      assert.equal(method, 'get_launch_settlement');
+      const stack = present
+        ? [491n, 0n, 3n, -1n, 0n, 0n, 0n, 7n, 16n, 0n, -1n, -1n, -1n, -1n, 0n, 0n].map((value) => ({
+            type: 'int',
+            value,
+          }))
+        : [
+            ...Array.from({ length: 10 }, () => ({ type: 'null' })),
+            ...[0n, 0n, 0n, 0n, 0n, 0n].map((value) => ({ type: 'int', value })),
+          ];
+      return { stack: new TupleReader(stack) };
+    },
+  }));
+  const state = await client.getLaunchSettlement(curve);
+  assert.equal(state.settlement.phase, 3n);
+  assert.equal(state.settlement.queryId, 491n);
+  assert.equal(state.settlement.factoryConfirmed, true);
+  assert.equal(state.settlement.retainedBufferLimit, 0n);
+  assert.equal(state.retainedBuffer, 0n);
+  assert.equal(state.settlement.recoveryId, 7n);
+  assert.equal(state.settlement.recoveryPending, 16n);
+  assert.equal(state.settlement.mintResolving, 0n);
+  assert.equal(state.adminDropped, true);
+  assert.equal(state.minimumRetryValue, 0n);
+  present = false;
+  assert.equal((await client.getLaunchSettlement(curve)).settlement, null);
+});
+
 test('migration getter decodes deposit generation, closing state and absent progress', async () => {
   let present = true;
   const client = new sdk.LaunchpadV2(() => ({

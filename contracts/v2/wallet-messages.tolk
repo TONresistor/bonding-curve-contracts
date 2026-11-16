@@ -1,5 +1,99 @@
 import "../v1/messages"
 
+struct (0xa0a0b087) ResolveLaunchMint {
+    queryId: uint64
+    leg: uint3
+}
+
+struct (0xa0a0b088) InspectLaunchMint {
+    queryId: uint64
+    leg: uint3
+    curve: address
+}
+
+struct (0xa0a0b089) LaunchMintInspection {
+    queryId: uint64
+    leg: uint3
+    delivered: bool
+    amount: coins
+}
+
+struct (0xa0a0b08a) LaunchMintResolved {
+    queryId: uint64
+    leg: uint3
+    delivered: bool
+    failed: bool
+    amount: coins
+}
+
+fun replyLaunchMintResolved(
+    to: address,
+    queryId: uint64,
+    leg: uint3,
+    delivered: bool,
+    failed: bool,
+    amount: coins,
+    received: coins,
+) {
+    reserveToncoinsOnBalance(
+        max(contract.getOriginalBalance() - received, 0),
+        RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+    );
+    createMessage({ bounce: false, dest: to, value: 0, body: LaunchMintResolved {
+            queryId,
+            leg,
+            delivered,
+            failed,
+            amount,
+        } }).send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
+
+struct (0xa0a0b085) ProbeLaunchSettlement {
+    queryId: uint64
+    leg: uint3
+}
+
+struct (0xa0a0b086) LaunchSettlementState {
+    queryId: uint64
+    leg: uint3
+    completed: bool
+    amount: coins
+}
+
+fun replyLaunchSettlement(
+    to: address,
+    queryId: uint64,
+    leg: uint3,
+    completed: bool,
+    amount: coins,
+    received: coins,
+    reserve: coins,
+) {
+    reserveToncoinsOnBalance(
+        max(max(contract.getOriginalBalance() - received, 0), reserve),
+        RESERVE_MODE_EXACT_AMOUNT | RESERVE_MODE_BOUNCE_ON_ACTION_FAIL,
+    );
+    createMessage({ bounce: false, dest: to, value: 0, body: LaunchSettlementState {
+            queryId,
+            leg,
+            completed,
+            amount,
+        } }).send(SEND_MODE_CARRY_ALL_BALANCE | SEND_MODE_BOUNCE_ON_ACTION_FAIL);
+}
+
+struct (0xa0a0b080) MintLaunchTokens {
+    queryId: uint64
+    jettonAmount: coins
+    mintRecipient: address
+}
+
+struct (0xa0a0b081) InternalLaunchMint {
+    queryId: uint64
+    jettonAmount: coins
+    curve: address
+    protect: bool
+}
+
 struct (0xa0a0b066) MigrationDepositRefundContext {
     depositGeneration: uint64
 }

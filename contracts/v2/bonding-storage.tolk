@@ -1,5 +1,44 @@
 import "fee-storage"
 
+enum LaunchSettlementPhase: uint8 {
+    WaitingMints = 0
+    WaitingServices = 1
+    Ready = 2
+    Finalizing = 3
+    Complete = 4
+    Cancelled = 5
+}
+
+struct LaunchSettlement {
+    queryId: uint64
+    preExistingBalance: coins
+    phase: LaunchSettlementPhase
+    factoryConfirmed: bool = false
+    confirmInFlight: bool = false
+    dropInFlight: bool = false
+    retainedBufferLimit: coins = 0
+    recoveryId: uint64 = 0
+    recoveryPending: uint5 = 0
+    mintResolving: uint2 = 0
+}
+
+struct LaunchSettlementReply {
+    settlement: LaunchSettlement?
+    curveReceived: bool
+    devReceived: bool
+    adminDropped: bool
+    minimumRetryValue: coins
+    retainedBuffer: coins
+}
+
+struct CreationQuote {
+    minimumCreateValue: coins
+    protocolFee: coins
+    migrationPrefund: coins
+    operatingReserves: coins
+    executionBudget: coins
+}
+
 struct MigrationProgress {
     nativeQueryId: uint64
     jettonQueryId: uint64
@@ -119,6 +158,7 @@ struct BondingCurveStorage {
     pendingBuyTonInNet: coins
     progress: Cell<LaunchProgress>
     migration: Cell<MigrationProgress>? = null
+    settlement: Cell<LaunchSettlement>? = null
 }
 
 fun BondingCurveStorage.load(): BondingCurveStorage {
