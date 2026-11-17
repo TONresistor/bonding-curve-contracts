@@ -15,6 +15,9 @@ gen/
 # Coverage output (regenerable via `acton test --coverage`)
 coverage.txt
 
+# Local planning notes
+/SPECS-V2.1.md
+
 # Intentionally tracked (do NOT ignore):
 #   build/gas-baseline.json : gas regression baseline
 #   wrappers/*.gen.tolk     : Tolk wrappers (tests depend on them)

@@ -3,7 +3,6 @@
 # bonding-curve-contracts
 
 [![Version](https://img.shields.io/badge/version-V2.1%20in%20development-0098EA)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/V2%20tests-60%20passing-brightgreen)](./tests/v2)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
 </div>
@@ -14,37 +13,39 @@ TON token launchpad with a bonding curve and automatic migration to DeDust CPMM 
 
 ## Launch options
 
-| Option              | Choices                                              |
-| ------------------- | ---------------------------------------------------- |
-| Supply              | Custom token quantity                               |
-| Migration threshold | Custom amount from 500 to 10,000 TON                            |
-| Creator fee         | 0–10%, in 0.1% steps                               |
+| Option              | Choices                                            |
+| ------------------- | -------------------------------------------------- |
+| Supply              | Custom token quantity                              |
+| Migration threshold | Custom amount from 500 to 10,000 TON                |
+| Creator fee         | 0–10%, in 0.1% steps                                |
 | Fee destination     | Up to 8 wallets with fixed shares, or buyback & burn |
 | Buy limits          | Optional minimum and maximum, in % of initial supply |
 
-The sold share is configurable; the contract derives the virtual reserve and validates migration liquidity.
+The sold share is configurable; the contract derives the virtual reserve and validates migration liquidity. Launch settings are fixed; contracts cannot be upgraded.
 
-An optional dev buy completes before public trading opens. Launch settings are fixed; contracts cannot be upgraded.
+## Creation and fees
 
-On the curve, the protocol charges 1% in addition to the creator fee. Migration costs 20 TON, paid after liquidity is confirmed. DeDust fees also include LP and protocol shares; exact rates are available through `get_fee_rates`.
+Creation uses a factory quote covering the **0.2 TON protocol fee**, execution, reserves and any dev buy. Trading opens after creation settles; refundable surplus is returned once to the creator.
 
-Buyback mode collects the creator share, buys tokens after migration and burns them to reduce supply. Anyone can trigger it. Swaps allow 3% slippage against a pool quote valid for 60 seconds.
+Missing confirmations can be recovered without reminting; confirmed mint failures cancel the launch. [Creation and recovery](docs/v2/README.md#launches).
+
+Curve fees are **1% protocol + creator fee**. Migration costs **20 TON**, charged after liquidity confirmation. Read DeDust fee shares through `get_fee_rates`.
+
+Buyback uses creator fees to buy and burn tokens after migration. Anyone can trigger it; swaps enforce 3% slippage against a pool quote valid for 60 seconds.
 
 ## Tests
 
-Validated with Acton 1.2.0:
+Local validation with Acton 1.2.0 / Tolk 1.4.2 and real DeDust libraries:
 
-- **60 V2 tests** covering launches, lifecycle events, trades, fees, refunds and buyback & burn.
-- **552 local migration simulations**, using real DeDust libraries.
-- **2 migration completion checks**: normal flow and concurrent confirmations, verifying locked liquidity and a single migration fee.
-- Buyback tested across **12 supply/fee combinations** locally. A previous V2 baseline also passed the migration matrix and buyback tests on mainnet fork **96720714**.
+- **549 migration scenarios** across supply, fee, dev buy and threshold settings.
+- **3 percentage-limit checks**.
+- **2 finalization checks**, verifying fully locked initial LP tokens and a single migration fee.
 
-All executions were emulated; no real funds were spent. [Commands and results](tests/README.md).
+Contract tests cover launches, trades, refunds, recovery and buyback. All runs are emulated. [Test guide](tests/README.md).
 
 ## SDK
 
-The published SDK 0.1.1 targets V2.0. V2.1 integration requires an SDK update. TypeScript helpers live in [`sdk/`](sdk/).
-They reuse Acton wrappers and prepare transactions for TON Connect or a backend sender. [Usage](docs/v2/README.md#sdk).
+The [`SDK source`](sdk/) targets V2.1 and prepares transactions for TON Connect or a backend sender. `prepareLaunch` uses the factory quote. [Build and usage](docs/v2/README.md#sdk).
 
 ## Development
 
